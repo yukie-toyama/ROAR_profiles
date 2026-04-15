@@ -1,0 +1,91 @@
+
+```{r library-loads}
+library(mclust)
+library(tidyverse)
+library(dplyr)
+library(corrplot)
+
+```
+
+
+```{r write-out-anonymized-data}
+# Load in raw data and write out a simplified and totally de-identified data frame
+df <- read.csv("~/Documents/reading_profile_data_2026-03-20.csv")
+varnames <- c("word_theta", "phonics_theta" ,"phoneme_theta", "sentence_score", "morphology_theta", "cva_theta", "trog_theta", "inference_theta", "age_months_at_run", "user_grade_at_run") 
+df <- select(df, varnames) %>%
+  round(digits=2)
+write.csv(df, "~/Documents/deidentified_reading_profile_data_2026-03-03.csv")
+```
+
+
+```{r data-prep}
+
+# Load in raw data and write out a simplified and totally de-identified data frame
+df <- read.csv("~/Documents/deidentified_reading_profile_data_2026-03-03.csv")
+varnames <- c("word_theta", "phonics_theta" ,"phoneme_theta", "sentence_score", "morphology_theta", "cva_theta", "trog_theta", "inference_theta", "age_months_at_run", "user_grade_at_run") 
+
+# Histogram of grades
+ggplot(df, aes(x=user_grade_at_run)) +
+  geom_histogram() 
+# create a new matrix with the variables used for clustering and removing any row with an NAN and filtering to grades 2-5
+df.mclust <- filter(df, user_grade_at_run>=2) %>%
+  filter(user_grade_at_run<=5) %>%
+  select(varnames[1:8]) 
+
+df.mclust_na <- filter(df.mclust, !is.na(rowMeans(df.mclust)))
+
+# scaling data - z-score data for clustering
+scaled_scores_na <- df.mclust_na %>% mutate_all(list(scale))
+
+# compute correlation matrix and visualize
+c = cor(scaled_scores_na)
+corrplot(c, method = 'circle', order = 'hclust',
+         addCoef.col = "black",number.cex = 0.4, number.digits = 2)
+```
+
+
+```{r lpa-model, echo=FALSE}
+# Following these instructions for latent profile analysis https://willhipson.netlify.app/post/latent-profile/latent-profile/ 
+
+# consider tidyLPA instead https://cran.r-project.org/web/packages/tidyLPA/vignettes/Introduction_to_tidyLPA.html
+
+# getting and plotting Bayesian Information Criteria 
+
+BIC <- mclustBIC(scaled_scores_na)
+plot(BIC)
+summary(BIC)
+
+# double check we chose the best model by looking at Integrated Completed Likelihood 
+ICL <- mclustICL(scaled_scores_na)
+plot(ICL)
+summary(ICL)
+
+
+#choosing VVE, 3 which is a top model based on BIC
+mod1 <- Mclust(scaled_scores_na, modelNames = "VVE", G = 3)
+summary(mod1)
+
+
+# final check Boostrap Likelihood Ratio Test (BLRT) -- takes a long time to run do not run unless necessary 
+#mclustBootstrapLRT(scores_na, modelName = "VVV")
+```
+
+```{r visualize-lpa, echo=FALSE, warning=FALSE}
+
+# Create a new dataframe that is the mean of each (standardized) measure for each profile
+means <- data.frame(mod1$parameters$mean) %>%
+  rownames_to_column() %>%
+  rename(Scores = rowname) %>%
+  pivot_longer(cols = c(X1, X2, X3), names_to = "Profile", values_to = "Mean") %>%
+  mutate(Mean = round(Mean, 2)) %>%
+  mutate(Scores = factor(Scores, levels = varnames))
+
+# Plot out profiles
+ggplot(means, aes(x=Scores, y=Mean, group = Profile, color = Profile)) +
+  geom_point() +
+  geom_line()
+```
+
+# TODO
+# 1) Examine profiles separately by grade
+# 2) Dimensionality analysis
