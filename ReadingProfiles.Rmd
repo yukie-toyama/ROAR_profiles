@@ -1,4 +1,3 @@
-
 ```{r library-loads}
 library(mclust)
 library(tidyverse)
@@ -7,44 +6,57 @@ library(corrplot)
 
 ```
 
-
 ```{r write-out-anonymized-data}
 # Load in raw data and write out a simplified and totally de-identified data frame
-df <- read.csv("~/Documents/reading_profile_data_2026-03-20.csv")
+df <- read_csv("data/deidentified_reading_profile_data_2026-03-03.csv")
 varnames <- c("word_theta", "phonics_theta" ,"phoneme_theta", "sentence_score", "morphology_theta", "cva_theta", "trog_theta", "inference_theta", "age_months_at_run", "user_grade_at_run") 
-df <- select(df, varnames) %>%
+df <- df %>% select(all_of(varnames)) %>%
   round(digits=2)
-write.csv(df, "~/Documents/deidentified_reading_profile_data_2026-03-03.csv")
+# write.csv(df, "data/deidentified_reading_profile_data_2026-03-03.csv")
 ```
-
 
 ```{r data-prep}
 
-# Load in raw data and write out a simplified and totally de-identified data frame
-df <- read.csv("~/Documents/deidentified_reading_profile_data_2026-03-03.csv")
-varnames <- c("word_theta", "phonics_theta" ,"phoneme_theta", "sentence_score", "morphology_theta", "cva_theta", "trog_theta", "inference_theta", "age_months_at_run", "user_grade_at_run") 
-
-# Histogram of grades
+# Histogram of grades (K-8)
 ggplot(df, aes(x=user_grade_at_run)) +
   geom_histogram() 
+
 # create a new matrix with the variables used for clustering and removing any row with an NAN and filtering to grades 2-5
-df.mclust <- filter(df, user_grade_at_run>=2) %>%
+df.mclust <- 
+  filter(df, user_grade_at_run>=2) %>%
   filter(user_grade_at_run<=5) %>%
   select(varnames[1:8]) 
 
-df.mclust_na <- filter(df.mclust, !is.na(rowMeans(df.mclust)))
+df.mclust_na <- filter(df.mclust, 
+                       !is.na(rowMeans(df.mclust)))
 
-# scaling data - z-score data for clustering
-scaled_scores_na <- df.mclust_na %>% mutate_all(list(scale))
-
-# compute correlation matrix and visualize
-c = cor(scaled_scores_na)
-corrplot(c, method = 'circle', order = 'hclust',
-         addCoef.col = "black",number.cex = 0.4, number.digits = 2)
+# scaling data: all ROAR scores on the z-score scale
+scaled_scores_na <- df.mclust_na %>% 
+  mutate(across(everything(), ~as.numeric(scale(.))))
 ```
 
+## Correlation
 
-```{r lpa-model, echo=FALSE}
+> **A. Language Block among Inference, Morphology, and CVA:** Inference, morphology, and CVA are forming a tight block with correlations 0.76-0.83, likely forming the latent "language" factor. The strongest relationship is between **CVA** and **Morphology (r = 0.83**). Because this is above 0.80, these variables are statistically "redundant." We expect them to show almost identical patterns in our final profiles.
+
+> **B. The Profile "Sweet Spot"** The correlations between foundational skills (like **Phonics**) and comprehension skills (like **Inference**) sit between *0.50* and *0.65*. This is ideal for Profile Analysis; it means the skills are related, but different enough that we can find students with "uneven" strengths and weaknesses.
+
+> **C. Skill Independence** The lowest correlation is between **Sentence Score** and **TROG** (r=0.46). This suggests these two assessments are measuring different cognitive abilities, which may help us distinguish between different "types" of readers in our profiles.
+
+```{r corr_matrix}
+# compute correlation matrix and visualize
+c = cor(scaled_scores_na)
+corrplot(c, 
+         method = 'circle', 
+         type = 'lower',    # To show lower half only
+         order = 'hclust',  # Keeps the hierarchical clustering order
+         addCoef.col = "black", 
+         diag = FALSE,          # to hide the diagonal
+         number.cex = 0.6, 
+         number.digits = 2)
+```
+
+```{r lpa-model-1, echo=FALSE}
 # Following these instructions for latent profile analysis https://willhipson.netlify.app/post/latent-profile/latent-profile/ 
 
 # consider tidyLPA instead https://cran.r-project.org/web/packages/tidyLPA/vignettes/Introduction_to_tidyLPA.html
@@ -52,26 +64,61 @@ corrplot(c, method = 'circle', order = 'hclust',
 # getting and plotting Bayesian Information Criteria 
 
 BIC <- mclustBIC(scaled_scores_na)
-plot(BIC)
-summary(BIC)
+```
 
+## Latent Profile Analysis
+
+### **Step 1. Exploratory Model Selection (mclust)**
+
+We identified optimal student subgroups by conducting a Latent Profile Analysis (LPA) using the Mclust function within the *mclust* package in R. This package utilizes a Gaussian Mixture Modeling framework to identify unobserved (latent) groups within the data. Based on a systematic comparison of 14 different model structures in the **Model Specification Plot (Figure 1)**, we selected a 3-profile solution using a **VVE** (Variable volume, Variable shape, Equal orientation) specification.
+
+This model was chosen because it achieved a peak in the Bayesian Information Criterion (BIC), indicating a superior balance between model fit and complexity. The VVE structure is particularly well-suited for reading data as it allows for subgroups of different sizes and different levels of score-variance, reflecting the reality that struggling reader groups are often smaller and more heterogeneous than typical reader groups. This rigorous selection process ensures the identified profiles represent meaningful, distinct patterns of reading skills rather than statistical noise
+
+```{r bic-plot, fig.cap="**Figure 1.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
+plot(BIC)
+```
+
+A comparison of fit indices (see below) revealed that the VVE **(Variable volume, Variable shape, Equal orientation)** model structure consistently outperformed other specifications. While the absolute best statistical fit was observed for a 6-profile solution (BIC = -24,599.32), we selected the 3-profile VVE model (BIC = -24,640.68) for the final analysis.
+
+This decision was based on the principle of parsimony; the 3-profile solution represents a significant "elbow" in the model selection plot, capturing the primary developmental leaps in reading skills without the risk of overfitting the data to minor variations. Furthermore, the 3-profile solution provided a more theoretically coherent framework for identifying distinct instructional needs, a priority highlighted in foundational reading research (e.g., Vargas et al., 2024; Kulesz et al., 2024).
+
+```{r bic-summary}
+summary(BIC)
+```
+
+**Validation via Integrated Completed Likelihood (ICL)**
+
+To further validate the number of profiles, we examined the Integrated Completed Likelihood (ICL). While BIC can sometimes favor more complex models, ICL includes an additional penalty for "classification entropy" (how clearly students are assigned to a single group).
+
+As shown in the ICL Model Selection Plot (Figure 2), fit indices for the top-performing model structures (VEE, VVE, and VEV) all reached a distinct peak at the 3-profile solution (Top ICL = -25,034.6) before declining. This convergence between BIC and ICL strongly supports the 3-profile model as the most reliable representation of student reading patterns, ensuring high classification certainty and minimal overlap between subgroups.
+
+```{r icl}
 # double check we chose the best model by looking at Integrated Completed Likelihood 
 ICL <- mclustICL(scaled_scores_na)
+```
+
+```{r icl_plot, fig.cap="**Figure 2.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
 plot(ICL)
+```
+
+```{r icl_sum}
 summary(ICL)
+```
 
+### Three Profiles
 
+The 3-profile VVE model successfully categorized the 1,504 students into distinct subgroups based on their reading and language profiles. The largest subgroup (Profile 1, n = 791) represented 52.6% of the sample, followed by Profile 3 (n = 595, 39.6%). A smaller, distinct subgroup was also identified (Profile 2, n = 118, 7.8%), representing a specialized pattern of reading development. The high ICL value (-25,061.57) confirms that these three groups are well-separated with high classification certainty.
+
+```{r mod1_3}
 #choosing VVE, 3 which is a top model based on BIC
 mod1 <- Mclust(scaled_scores_na, modelNames = "VVE", G = 3)
 summary(mod1)
-
 
 # final check Boostrap Likelihood Ratio Test (BLRT) -- takes a long time to run do not run unless necessary 
 #mclustBootstrapLRT(scores_na, modelName = "VVV")
 ```
 
 ```{r visualize-lpa, echo=FALSE, warning=FALSE}
-
 # Create a new dataframe that is the mean of each (standardized) measure for each profile
 means <- data.frame(mod1$parameters$mean) %>%
   rownames_to_column() %>%
@@ -80,12 +127,272 @@ means <- data.frame(mod1$parameters$mean) %>%
   mutate(Mean = round(Mean, 2)) %>%
   mutate(Scores = factor(Scores, levels = varnames))
 
-# Plot out profiles
+# Define the new expert-driven order
+order <- c("inference_theta", "morphology_theta", "cva_theta",
+           "trog_theta", "sentence_score",  "word_theta", 
+           "phonics_theta", "phoneme_theta")
+
+# Update the means dataframe
+means <- data.frame(mod1$parameters$mean) %>%
+  rownames_to_column() %>%
+  rename(Scores = rowname) %>%
+  pivot_longer(cols = c(X1, X2, X3), names_to = "Profile", values_to = "Mean") %>%
+  mutate(Mean = round(Mean, 2)) %>%
+  # --- This is the critical line: re-leveling the factor ---
+  mutate(Scores = factor(Scores, levels = order))
+```
+
+### Profile Plot
+
+Figure 3 shows the strength and weakness of the three latent profiles on the eight ROAR-measures.
+
+```{r profile_plot, fig.cap="**Figure 3.** *Latent Profiles of Reading and Language Skills. Z-Scores relative to sample average (N = 1504)*"}}
+library(stringr)
+
+# 1. Define your labels with percentages
+labels_with_pct <- c(
+  "X1" = "Proficient (52.6%)", 
+  "X3" = "Low Average (39.6%)", 
+  "X2" = "Struggling (esp. Grammar & Phonics) (7.8%)"
+)
+
+# 2. Plotting with strict legend control
 ggplot(means, aes(x=Scores, y=Mean, group = Profile, color = Profile)) +
-  geom_point() +
-  geom_line()
+  geom_point(size = 3) +
+  geom_line(size = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.4) +
+  # Clean X-axis labels (removing _theta and _score)
+  scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
+  scale_color_manual(
+    values = c("X1" = "#2ca02c", "X3" = "#ff7f0e", "X2" = "#d62728"), # Green, Orange, Red
+    breaks = c("X1", "X3", "X2"), # the order: Prof -> Low Ave -> Struggling
+    labels = labels_with_pct
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    y = "Mean Z-Score (Relative to Average)",
+    x = "ROAR Measures"
+  )
+```
+
+**Profile 1 (Green): "The Proficient Readers" (\~53% of sample)**
+
+The Pattern: A relatively flat line sitting comfortably above the 0.5 standard deviation mark.
+
+Interpretation: These students are "balanced." They show no significant discrepancies between high-level language comprehension and low-level code skills. Their reading system is likely fully integrated.
+
+**Profile 2 (Orange): "The Low-Average" (\~40% of sample)**
+
+The Pattern: Also a relatively flat line, but sitting entirely below the sample average (0). Notice how this line "peaks" slightly at **TROG** and **Phonics**. This suggests that while these students are generally low, they have slightly better receptive grammar and phonics knowledge compared to their broader language comprehension (Inference/Morphology/CVA) and phonemic awareness.
+
+Interpretation: These are students who are "getting by" but are consistently performing below their peers.
+
+**Profile 3 (Red): "The Struggling (esp. Grammar & Phonics) " (\~8% of sample)**
+
+The Pattern: All lower than the other two profiles with distinct valleys with trog and phonics, indicating these students struggle mostly with receptive grammar and decoding. Interesting to note that these students appear to have basic phonemic awareness and language comprehension skills as the red line jump up to trail the orange line for these other skills
+
+Interpretation: This groups has specific double weaknesses. They are not just "globally low" like the low-average group; they have massive, specific "drops" in Phonics and Grammar that are out of proportion with their other skills.
+
+### Step 2. Formal Model Validation and Fit Comparison (tidyLPA)
+
+Following the exploratory model search in *mclust*, which suggested a 3-profile structure, we conducted a formal validation using the *tidyLPA* package. This transition allows for a more parsimonious comparison of fit indices—specifically Entropy and the Bootstrap Likelihood Ratio Test (BLRT)—ensuring that the final profiles are both statistically robust and clearly differentiated. Addionally, while the *mclust* package was used to explore complex covariance structures (like VVE), this tidyLPA approach utilizes a more parsimonious 'Model 1' specification (equal variances and zero covariances), which provides a more conservative and highly interpretable framework for reporting the final student profiles.
+
+```{r r lpa-model-2, echo=FALSE}
+# --- 1. Load Required Libraries ---
+library(tidyLPA)
+library(tidyverse)
+library(dplyr)
+library(patchwork) # For combining plots if needed
+
+
+# --- 2. Model Estimation (The "Expert" Way) ---
+# We test 1 to 5 profiles. 
+# We use 'Model 1' (Equal variances, zero covariances) as it is the most parsimonious.
+# If your theory suggests profiles have different 'spreads', change to Model 2.
+lpa_models <- scaled_scores_na %>%
+  estimate_profiles(1:5, 
+                    package = "mclust", 
+                    variances = "equal", 
+                    covariances = "zero")
+```
+
+```{r tidyLPA_multiple_mods}
+library(tidyLPA)
+
+# Compare Models 1, 2, and 3 (common LPA specifications)
+# Test 1 to 5 classes across 3 model types
+results <- scaled_scores_na %>%
+  estimate_profiles(1:5, 
+                    models = c(1, 2, 3)) 
+
+# Compare the fit indices
+fits_muti_mods <- get_fit(results)
+View(fits_muti_mods)
+
+idx <- which(fits_muti_mods$Classes == 3 & fits_muti_mods$Model == 2)
+idx <- which(fits_muti_mods$Classes == 5 & fits_muti_mods$Model == 2)
+idx <- which(fits_muti_mods$Classes == 4 & fits_muti_mods$Model == 2)
+
+mode2_c5 <- results[[idx]]
+mode2_c4 <- results[[idx]]
+
+estimates_df <- get_estimates(mode2_c4)
+
+plot_data <- estimates_df %>%
+  dplyr::filter(Category == "Means") %>%
+  dplyr::mutate(
+    Class = factor(Class),
+    Parameter = factor(Parameter, levels = order)
+  )
+
+ggplot(plot_data,
+       aes(x = Parameter, y = Estimate,
+           group = Class, color = Class)) +
+  geom_line(linewidth = 1.5) +
+  geom_point(size = 3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray60") +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = NULL,
+    y = "Standardized Mean (Z)",
+    color = "Profile"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+# Students by Four-Latent Classes
+mode2_c4 %>% 
+  get_data() %>% 
+  group_by(Class) %>% 
+  tally() %>% 
+  mutate(prop = n/sum(n))
+
+```
+
+#### LPA Model Fit Summary (with tidyLPA)
+
+We compared 1- through 5-profile solutions to identify the most robust grouping of students (Table 1). While information criteria (AIC/BIC) continued to decrease through 5 profiles, the 3-profile solution was selected as the optimal model based on the following:
+
+-   ***Statistical Parsimony***: The most substantial improvement in fit occurred moving from 1 to 3 profiles. The drop in **BIC** between the 2- and 3-profile models was **1,833.75 points**, whereas the drop from 3 to 4 profiles was nearly three times smaller (**647.69 points**). This indicates that the 3-profile model captures the primary structure of the data without the complexity of overfitting.
+
+-   ***Classification Quality***: he 3-profile model maintained superior classification clarity with an **Entropy of 0.89**. Classification certainty began to degrade in more complex solutions (0.87 for 4-profiles; 0.84 for 5-profiles).
+
+-   ***Group Stability:*** The 3-profile model produced robust subgroups, with the smallest group representing **22% of the sample (**n≈330n \approx 330n≈330). In contrast, the 5-profile model resulted in a much smaller subgroup representing only 10% of the sample (n≈150n \approx 150n≈150).
+
+-   ***Significance:*** **The BLRT (**$p < .01$**)** confirmed that the 3-profile model was a significant improvement over the 2-profile solution.
+
+**Conclusion: The 3-profile model** provides the best balance of statistical fit, classification clarity, and theoretical interpretability for identifying distinct reading and language needs.
+
+```{r tidyLPA_mod_comp}
+# --- 3. Model Comparison & Fit Indices ---
+# This generates the table you need for your results section (BIC, Entropy, etc.)
+fit_stats <- get_fit(lpa_models)
+
+library(dplyr)
+library(kableExtra)
+
+# 1. Select and rename the most important columns
+table_data <- fit_stats %>%
+  select(Classes, AIC, BIC, SABIC, Entropy, n_min, BLRT_p) %>%
+  mutate(across(where(is.numeric), ~round(., 2))) # Round everything to 2 decimals
+
+# 2. Create the professional HTML table
+table_data %>%
+  kbl(caption = "Table 1. Fit Indices for Latent Profile Analysis (Models 1-5)",
+      col.names = c("Profiles", "AIC", "BIC", "SABIC", "Entropy", "Smallest Class %", "BLRT (p)"),
+      align = "c") %>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  row_spec(3, bold = T, background = "#d4edda") %>% # Highlighting your 3-profile choice in green
+  footnote(general = "AIC: Akaike Information Criterion; BIC: Bayesian Information Criterion; SABIC: Sample-Adjusted BIC; BLRT: Bootstrap Likelihood Ratio Test.")
+```
+
+```{r tidyLPA_mod_selection}
+# --- 5. Selecting the Best Model (The 'tidyLPA' way) ---
+best_model_num <- 3 
+
+# Select the 3-profile model directly from the list
+# Note: tidyLPA stores results in a list; the 3rd item is your 3-profile model
+best_model <- lpa_models[[best_model_num]]
+
+# Extract the assignments (which student is in which class)
+# We specify tidyLPA:: to avoid conflicts with tidySEM
+results_data <- tidyLPA::get_data(best_model)
+
+# --- 6. Quick Check of the 'tidyLPA' Class Sizes ---
+# This will show you that 22% (n_min) we saw in the table
+table(results_data$Class)
+table(results_data$Class) / sum(table(results_data$Class))
+
+# --- 6. Expert Visualization (Publication Quality) ---
+# We extract the means for each profile and plot them
+
+estimates_df <- get_estimates(best_model)
+
+class(estimates_df)
+names(estimates_df)
+
+plot_data <- estimates_df %>%
+  dplyr::filter(Category == "Means")
+
+plot_data <- plot_data %>%
+  mutate(Parameter = factor(Parameter, levels = order))
+
+# 1. Define your labels with percentages
+labels_with_pct2 <- c(
+  "1" = "Proficient (37.5%)", 
+  "3" = "Low Average (40.4%)", 
+  "2" = "Struggling (22.1%)"
+)
+
+
+# Create the Profile Plot
+ggplot(plot_data, aes(x = Parameter, y = Estimate, 
+                      group = factor(Class), 
+                      color = factor(Class))) +
+  geom_point(size = 3) +
+  geom_line(size = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.4) +
+  # Add error bars
+  geom_errorbar(aes(ymin = Estimate - 1.96*se, ymax = Estimate + 1.96*se), 
+                width = 0.1, alpha = 0.5) +
+  # Clean X-axis labels (removing _theta and _score)
+  scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
+  scale_color_manual(
+    values = c("1" = "#2ca02c", "3" = "#ff7f0e", "2" = "#d62728"), # Green, Orange, Red
+    breaks = c("1", "3", "2"), # the order: Prof -> Low Ave -> Struggling
+    labels = labels_with_pct2
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  labs(
+    y = "Mean Z-Score (Relative to Average)",
+    x = "ROAR Measures"
+  )
+
+# --- 7. Final Step: Classification Accuracy ---
+# Check how many students are in each profile
+table(results$Class)
+
 ```
 
 # TODO
+
 # 1) Examine profiles separately by grade
+
 # 2) Dimensionality analysis
