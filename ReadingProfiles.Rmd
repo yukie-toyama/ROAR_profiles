@@ -14,6 +14,7 @@ editor_options:
 ##  {.tabset}
 
 ### Intro
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = FALSE,    # hide code
@@ -30,7 +31,9 @@ library(corrplot)
 
 ```
 
-We conducted latent profile analysis. Initial dataset includes students in grades 2-8 but we subsetted it to include a total of 1,504 students in **grades 2-5** who completed eight ROAR-measures.
+We conducted latent profile analysis. Initial dataset includes students
+in grades 2-8 but we subsetted it to include a total of 1,504 students
+in **grades 2-5** who completed eight ROAR-measures.
 
 ```{r write-out-anonymized-data}
 # Load in raw data and write out a simplified and totally de-identified data frame
@@ -55,7 +58,9 @@ df.mclust <-
 
 df.mclust_na <- filter(df.mclust, 
                        !is.na(rowMeans(df.mclust)))
-
+library(janitor)
+df %>% filter(user_grade_at_run < 6) %>% 
+  tabyl(user_grade_at_run) %>% adorn_totals()
 # scaling data: all ROAR scores on the z-score scale
 scaled_scores_na <- df.mclust_na %>% 
   mutate(across(everything(), ~as.numeric(scale(.))))
@@ -63,6 +68,7 @@ scaled_scores_na <- df.mclust_na %>%
 
 ### Correlation
 
+Figure 2 shows a correlation matrix among the eight ROAR measures.
 
 ```{r corr_mat, fig.cap="**Figure 2.** *Correlations among eight ROAR measures (N = 1504)*"}
 # compute correlation matrix and visualize
@@ -77,20 +83,32 @@ corrplot(c,
          number.digits = 2)
 ```
 
-#### Observations: 
+#### Observations:
 
-> **A. Language Block among Inference, Morphology, and CVA:** Inference, morphology, and CVA are forming a tight block with correlations 0.76-0.83, likely forming the latent "language" factor. The strongest relationship is between **CVA** and **Morphology (r = 0.83**). Because this is above 0.80, these variables are statistically "redundant." We expect them to show almost identical patterns in our final profiles.
+> **A. Language Block among Inference, Morphology, and CVA:** Inference,
+> morphology, and CVA are forming a tight block with correlations
+> 0.76-0.83, likely forming the latent "language" factor. The strongest
+> relationship is between **CVA** and **Morphology (r = 0.83**). Because
+> this is above 0.80, these variables are statistically "redundant." We
+> expect them to show almost identical patterns in our final profiles.
 
-> **B. The Profile "Sweet Spot"** The correlations between foundational skills (like **Phonics**) and comprehension skills (like **Inference**) sit between *0.50* and *0.65*. This is ideal for Profile Analysis; it means the skills are related, but different enough that we can find students with "uneven" strengths and weaknesses.
+> **B. The Profile "Sweet Spot"** The correlations between foundational
+> skills (like **Phonics**) and comprehension skills (like
+> **Inference**) sit between *0.50* and *0.65*. This is ideal for
+> Profile Analysis; it means the skills are related, but different
+> enough that we can find students with "uneven" strengths and
+> weaknesses.
 
-> **C. Skill Independence** The lowest correlation is between **Sentence Score** and **TROG** (r=0.46). This suggests these two assessments are measuring different cognitive abilities, which may help us distinguish between different "types" of readers in our profiles.
-
+> **C. Skill Independence** The lowest correlation is between **Sentence
+> Score** and **TROG** (r=0.46). This suggests these two assessments are
+> measuring different cognitive abilities, which may help us distinguish
+> between different "types" of readers in our profiles.
 
 ### Latent Profile Analysis
 
-**On this page:**
-- [Step 1: Exploratory Model Selection (mclust)](#step1)
-- [Step 2. Model Selection & Fit (tidyLPA)](#step2)
+**On this page:** - [Step 1: Exploratory Model Selection
+(mclust)](#step1) - [Step 2. Model Selection & Fit (tidyLPA)](#step2)
+<br><br>
 
 ```{r lpa-model-1, echo=FALSE}
 # Following these instructions for latent profile analysis https://willhipson.netlify.app/post/latent-profile/latent-profile/ 
@@ -101,19 +119,47 @@ corrplot(c,
 
 BIC <- mclustBIC(scaled_scores_na)
 ```
-#### Step 1. Exploratory Model Selection (mclust){#step1}
 
-We sought to identify optimal student subgroups by conducting a Latent Profile Analysis (LPA) using the Mclust function within the *mclust* package in R. This package utilizes a Gaussian Mixture Modeling framework to identify unobserved (latent) groups within the data. Based on a systematic comparison of 14 different model structures in the **Model Specification Plot (Figure 1)**, we selected a 3-profile solution using a **VVE** (Variable volume, Variable shape, Equal orientation) specification.
+#### Step 1. Exploratory Model Selection (mclust) {#step1}
 
-This model was chosen because it achieved a peak in the Bayesian Information Criterion (BIC), indicating a superior balance between model fit and complexity. The VVE structure is particularly well-suited for reading data as it allows for subgroups of different sizes and different levels of score-variance, reflecting the reality that struggling reader groups are often smaller and more heterogeneous than typical reader groups. This selection process ensures the identified profiles represent meaningful, distinct patterns of reading skills rather than statistical noise
+We sought to identify optimal student subgroups by conducting a Latent
+Profile Analysis (LPA) using the Mclust function within the *mclust*
+package in R. This package utilizes a Gaussian Mixture Modeling
+framework to identify unobserved (latent) groups within the data. Based
+on a systematic comparison of 14 different model structures in the
+**Model Specification Plot (Figure 1)**, we selected a 3-profile
+solution using a **VVE** (Variable volume, Variable shape, Equal
+orientation) specification.
+
+This model was chosen because it achieved a peak in the Bayesian
+Information Criterion (BIC), indicating a superior balance between model
+fit and complexity. The VVE structure is particularly well-suited for
+reading data as it allows for subgroups of different sizes and different
+levels of score-variance, reflecting the reality that struggling reader
+groups are often smaller and more heterogeneous than typical reader
+groups. This selection process ensures the identified profiles represent
+meaningful, distinct patterns of reading skills rather than statistical
+noise
 
 ```{r bic-plot, fig.cap="**Figure 1.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
 plot(BIC)
 ```
 
-A comparison of fit indices (see below) revealed that the VVE **(Variable volume, Variable shape, Equal orientation)** model structure consistently outperformed other specifications. While the absolute best statistical fit was observed for a 6-profile solution (BIC = -24,599.32), we selected the 3-profile VVE model (BIC = -24,640.68) for the final analysis.
+A comparison of fit indices (see below) revealed that the VVE
+**(Variable volume, Variable shape, Equal orientation)** model structure
+consistently outperformed other specifications. While the absolute best
+statistical fit was observed for a 6-profile solution (BIC =
+-24,599.32), we selected the 3-profile VVE model (BIC = -24,640.68) for
+the final analysis.
 
-This decision was based on the principle of parsimony; the 3-profile solution represents a significant "elbow" in the model selection plot, capturing the primary developmental leaps in reading skills without the risk of overfitting the data to minor variations. Furthermore, the 3-profile solution provided a more theoretically coherent framework for identifying distinct instructional needs, a priority highlighted in foundational reading research (e.g., Vargas et al., 2024; Kulesz et al., 2024).
+This decision was based on the principle of parsimony; the 3-profile
+solution represents a significant "elbow" in the model selection plot,
+capturing the primary developmental leaps in reading skills without the
+risk of overfitting the data to minor variations. Furthermore, the
+3-profile solution provided a more theoretically coherent framework for
+identifying distinct instructional needs, a priority highlighted in
+foundational reading research (e.g., Vargas et al., 2024; Kulesz et al.,
+2024).
 
 ```{r bic-summary}
 summary(BIC)
@@ -121,9 +167,18 @@ summary(BIC)
 
 **Validation via Integrated Completed Likelihood (ICL)**
 
-To further validate the number of profiles, we examined the Integrated Completed Likelihood (ICL). While BIC can sometimes favor more complex models, ICL includes an additional penalty for "classification entropy" (how clearly students are assigned to a single group).
+To further validate the number of profiles, we examined the Integrated
+Completed Likelihood (ICL). While BIC can sometimes favor more complex
+models, ICL includes an additional penalty for "classification entropy"
+(how clearly students are assigned to a single group).
 
-As shown in the ICL Model Selection Plot (Figure 2), fit indices for the top-performing model structures (VEE, VVE, and VEV) all reached a distinct peak at the 3-profile solution (Top ICL = -25,034.6) before declining. This convergence between BIC and ICL strongly supports the 3-profile model as the most reliable representation of student reading patterns, ensuring high classification certainty and minimal overlap between subgroups.
+As shown in the ICL Model Selection Plot (Figure 2), fit indices for the
+top-performing model structures (VEE, VVE, and VEV) all reached a
+distinct peak at the 3-profile solution (Top ICL = -25,034.6) before
+declining. This convergence between BIC and ICL strongly supports the
+3-profile model as the most reliable representation of student reading
+patterns, ensuring high classification certainty and minimal overlap
+between subgroups.
 
 ```{r icl}
 # double check we chose the best model by looking at Integrated Completed Likelihood 
@@ -140,7 +195,14 @@ summary(ICL)
 
 ##### Three Profiles (VVE)
 
-The 3-profile VVE model successfully categorized the 1,504 students into distinct subgroups based on their reading and language profiles. The largest subgroup (Profile 1, n = 791) represented 52.6% of the sample, followed by Profile 3 (n = 595, 39.6%). A smaller, distinct subgroup was also identified (Profile 2, n = 118, 7.8%), representing a specialized pattern of reading development. The high ICL value (-25,061.57) confirms that these three groups are well-separated with high classification certainty.
+The 3-profile VVE model successfully categorized the 1,504 students into
+distinct subgroups based on their reading and language profiles. The
+largest subgroup (Profile 1, n = 791) represented 52.6% of the sample,
+followed by Profile 3 (n = 595, 39.6%). A smaller, distinct subgroup was
+also identified (Profile 2, n = 118, 7.8%), representing a specialized
+pattern of reading development. The high ICL value (-25,061.57) confirms
+that these three groups are well-separated with high classification
+certainty.
 
 ```{r mod1_3}
 #choosing VVE, 3 which is a top model based on BIC
@@ -177,7 +239,8 @@ means <- data.frame(mod1$parameters$mean) %>%
 
 ##### Profile Plot (VVE)
 
-Figure 3 shows the strength and weakness of the three latent profiles on the eight ROAR-measures.
+Figure 3 shows the strength and weakness of the three latent profiles on
+the eight ROAR-measures.
 
 ```{r profile_plot, fig.cap="**Figure 4.** *Latent Profiles of Reading and Language Skills. Z-Scores relative to sample average (N = 1504)*"}
 library(stringr)
@@ -229,32 +292,73 @@ vve.c3.titles <- vve.c3 +
 
 **Profile 1 (Green): "The Proficient Readers" (\~53% of sample)**
 
-The Pattern: A relatively flat line sitting comfortably above the 0.5 standard deviation mark.
+The Pattern: A relatively flat line sitting comfortably above the 0.5
+standard deviation mark.
 
-Interpretation: These students are "balanced." They show no significant discrepancies between high-level language comprehension and low-level code skills. Their reading system is likely fully integrated.
+Interpretation: These students are "balanced." They show no significant
+discrepancies between high-level language comprehension and low-level
+code skills. Their reading system is likely fully integrated.
 
 **Profile 2 (Orange): "The Low-Average" (\~40% of sample)**
 
-The Pattern: Also a relatively flat line, but sitting entirely below the sample average (0). Notice how this line "peaks" slightly at **TROG** and **Phonics**. This suggests that while these students are generally low, they have slightly better receptive grammar and phonics knowledge compared to their broader language comprehension (Inference/Morphology/CVA) and phonemic awareness.
+The Pattern: Also a relatively flat line, but sitting entirely below the
+sample average (0). Notice how this line "peaks" slightly at **TROG**
+and **Phonics**. This suggests that while these students are generally
+low, they have slightly better receptive grammar and phonics knowledge
+compared to their broader language comprehension
+(Inference/Morphology/CVA) and phonemic awareness.
 
-Interpretation: These are students who are "getting by" but are consistently performing below their peers.
+Interpretation: These are students who are "getting by" but are
+consistently performing below their peers.
 
-**Profile 3 (Red): "The Struggling (esp. Grammar & Phonics) " (\~8% of sample)**
+**Profile 3 (Red): "The Struggling (esp. Grammar & Phonics) " (\~8% of
+sample)**
 
-The Pattern: All lower than the other two profiles with distinct valleys with trog and phonics, indicating these students struggle mostly with receptive grammar and decoding. Interesting to note that these students appear to have basic phonemic awareness and language comprehension skills as the red line jump up to trail the orange line for these other skills
+The Pattern: All lower than the other two profiles with distinct valleys
+with trog and phonics, indicating these students struggle mostly with
+receptive grammar and decoding. Interesting to note that these students
+appear to have basic phonemic awareness and language comprehension
+skills as the red line jump up to trail the orange line for these other
+skills
 
-Interpretation: This groups has specific double weaknesses. They are not just "globally low" like the low-average group; they have massive, specific "drops" in Phonics and Grammar that are out of proportion with their other skills.
+Interpretation: This groups has specific double weaknesses. They are not
+just "globally low" like the low-average group; they have massive,
+specific "drops" in Phonics and Grammar that are out of proportion with
+their other skills.
 
+#### Step 2. Model Selection & Fit (tidyLPA) {#step2}
 
-#### Step 2. Model Selection & Fit (tidyLPA){#step2}
-
-Following the exploratory model search in *mclust*, which suggested a 3-profile structure, we conducted a formal validation using the *tidyLPA* package. This transition allows for a more parsimonious comparison of fit indices—specifically Entropy and the Bootstrap Likelihood Ratio Test (BLRT)—ensuring that the final profiles are both statistically robust and clearly differentiated. Additionally, while the *mclust* package was used to explore complex covariance structures (like VVE), this tidyLPA approach utilizes a more parsimonious 'Model 1' specification (equal variances and zero covariances), and 'Model 2' (varying variances), along with VVE. Models 1 and 2 provide a more conservative and highly interpretable framework for selecting and reporting the final student profiles.
+Following the exploratory model search in *mclust*, which suggested a
+3-profile structure, we conducted a formal validation using the
+*tidyLPA* package. This transition allows for a more parsimonious
+comparison of fit indices—specifically Entropy and the Bootstrap
+Likelihood Ratio Test (BLRT)—ensuring that the final profiles are both
+statistically robust and clearly differentiated. Additionally, while the
+*mclust* package was used to explore complex covariance structures (like
+VVE), this tidyLPA approach utilizes a more parsimonious 'Model 1'
+specification (equal variances and zero covariances), and 'Model 2'
+(varying variances), along with VVE. Models 1 and 2 provide a more
+conservative and highly interpretable framework for selecting and
+reporting the final student profiles.
 
 ##### Model Fit Comparison Results
 
-As shown in **Table 2**, the **VVE 3-profile solution** achieved the absolute best statistical fit according to the Bayesian Information Criterion (**BIC = 24,640.68**). However, this model exhibited relatively lower classification clarity (**Entropy = 0.73**), suggesting significant overlap between the identified groups. In contrast, the **Model 2 (varying variances)** solutions with 4 and 5 classes provided a compelling alternative; while their BIC values were higher than the VVE model, they yielded substantially higher classification certainty (**Entropy = 0.87**).
+As shown in **Table 2**, the **VVE 3-profile solution** achieved the
+absolute best statistical fit according to the Bayesian Information
+Criterion (**BIC = 24,640.68**). However, this model exhibited
+relatively lower classification clarity (**Entropy = 0.73**), suggesting
+significant overlap between the identified groups. In contrast, the
+**Model 2 (varying variances)** solutions with 4 and 5 classes provided
+a compelling alternative; while their BIC values were higher than the
+VVE model, they yielded substantially higher classification certainty
+(**Entropy = 0.87**).
 
-Given our sample size ($N=1504$) and our diagnostic interest in the 'lower-end' of the reader distribution, we examined Model 2 higher-order solutions. The Model 2 framework allows for the heterogeneity typically found in struggling readers, enabling us to identify smaller, clinically relevant subgroups (representing 3–15% of the sample) which could be masked in more parsimonious yet restrictive models.
+Given our sample size ($N=1504$) and our diagnostic interest in the
+'lower-end' of the reader distribution, we examined Model 2 higher-order
+solutions. The Model 2 framework allows for the heterogeneity typically
+found in struggling readers, enabling us to identify smaller, clinically
+relevant subgroups (representing 3–15% of the sample) which could be
+masked in more parsimonious yet restrictive models.
 
 ```{r mclust_fit_indecies}
 library(mclust)
@@ -359,11 +463,21 @@ all_comparisons_short %>%
 
 ##### Four profiles from Model 2 (varying var)
 
-Figure below shows four profiles from Model 2 (varying variances, zero covariances). The colored lines are mostly parallel.
+Figure below shows four profiles from Model 2 (varying variances, zero
+covariances). The colored lines are mostly parallel.
 
-**Highlight**: This solution primarily identifies levels of risk. We see a **proficient** group (green), an **above-average** group (blue), a **mild-risk** group (orange), and a chronic-risk group (red).
+**Highlight**: This solution primarily identifies levels of risk. We see
+a **proficient** group (green), an **above-average** group (blue), a
+**mild-risk** group (orange), and a chronic-risk group (red).
 
-**The Diagnostic Takeaway**: The 4-profile solution (Model 2) primarily reflects a unidimensional severity gradient. Because the profiles are largely parallel across all eight indicators, the differences between subgroups appear to be quantitative (differences in degree of skills) rather than qualitative (differences in the pattern of skills). This suggests that within this 4-class framework, the latent space is defined by a singular 'general reading ability' factor where students are distinguished by their overall developmental level.
+**The Diagnostic Takeaway**: The 4-profile solution (Model 2) primarily
+reflects a unidimensional severity gradient. Because the profiles are
+largely parallel across all eight indicators, the differences between
+subgroups appear to be quantitative (differences in degree of skills)
+rather than qualitative (differences in the pattern of skills). This
+suggests that within this 4-class framework, the latent space is defined
+by a singular 'general reading ability' factor where students are
+distinguished by their overall developmental level.
 
 ```{r profile_plots_m2.c4, fig.cap="**Figure 5.** *Model 2: 4-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
 
@@ -403,16 +517,37 @@ ggplot(plot_data_4, aes(x = Parameter, y = Estimate, group = factor(Class), colo
 
 ```
 
-
 ##### Five profiles from Model 2 (varying var)
 
-Figure below displays the five profiles from Model 2 (varying variances, zero covariances). Unlike the 4-profile solution, the colored lines here exhibit significant **non-parallelism**, particularly within the lower-performing subgroups.
+Figure below displays the five profiles from Model 2 (varying variances,
+zero covariances). Unlike the 4-profile solution, the colored lines here
+exhibit significant **non-parallelism**, particularly within the
+lower-performing subgroups.
 
-**Highlights**: The plots reveal both levels of severity and **qualitative differences in skill configurations**. In addition to the proficient (green), above-average (blue), and low-average (purple) groups, the model identifies two distinct types of struggling readers: a **specific syntactic-foundational risk** group (orange, 2.9%) and a **global reading risk** group (Red, 13.4%).
+**Highlights**: The plots reveal both levels of severity and
+**qualitative differences in skill configurations**. In addition to the
+proficient (green), above-average (blue), and low-average (purple)
+groups, the model identifies two distinct types of struggling readers: a
+**specific syntactic-foundational risk** group (orange, 2.9%) and a
+**global reading risk** group (Red, 13.4%).
 
-**The Diagnostic Takeaway:** The 5-profile solution reveals a more complex **structural pattern** than the 4-profile model. While the higher-performing groups continue to follow a "level-based" trend, the emergence of the orange profile represents a **qualitative shift** in the data. This subgroup is characterized by a **discrepant pattern**: these students demonstrate relatively average performance on the sentence tasks but show severe, disproportionate "valleys" in receptive grammar (TROG) and phonological decoding (phonics).
+**The Diagnostic Takeaway:** The 5-profile solution reveals a more
+complex **structural pattern** than the 4-profile model. While the
+higher-performing groups continue to follow a "level-based" trend, the
+emergence of the orange profile represents a **qualitative shift** in
+the data. This subgroup is characterized by a **discrepant pattern**:
+these students demonstrate relatively average performance on the
+sentence tasks but show severe, disproportionate "valleys" in receptive
+grammar (TROG) and phonological decoding (phonics).
 
-This suggests that reading risk in this population is not purely a matter of being "behind" in every skill. By moving to a 5-class framework, we transition from a model of **global developmental delay** to one that detects a small group of students with **specific needs**. This granularity is critical for instructional utility, as it distinguishes students who require a general increase in support from those who require specialized interventions targeting specific linguistic and phonological hurdles.
+This suggests that reading risk in this population is not purely a
+matter of being "behind" in every skill. By moving to a 5-class
+framework, we transition from a model of **global developmental delay**
+to one that detects a small group of students with **specific needs**.
+This granularity is critical for instructional utility, as it
+distinguishes students who require a general increase in support from
+those who require specialized interventions targeting specific
+linguistic and phonological hurdles.
 
 ```{r profile_plots_m2.c5, fig.cap="**Figure 6.** *Model 2: 5-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
 
@@ -457,11 +592,28 @@ m2c5.plot
 
 ### Cross-Model Convergence
 
-Figure 7 below presents the VVE 3-profile solution alongside the Model 2 5-profile solution. Notably, a similar configuration of dual weaknesses emerges in both models, which is characterized by lower performance in receptive grammar (TROG) and phonological decoding (Phonics) relative to sentence-level skills.
+#### Cross Model Convergence
 
-In the VVE solution, this pattern appears within the lowest-performing profile (red line), whereas in the 5-profile Model 2 solution it is isolated as a more distinct subgroup (orange). The recurrence of this feature across modeling frameworks (mclust vs. tidyLPA) and covariance specifications (VVE vs. diagonal Model 2) suggests that this contrast reflects a stable aspect of the observed score structure rather than a model-specific artifact.
+Figure 7 below presents the VVE 3-profile solution alongside the Model 2
+5-profile solution. Notably, a similar configuration of dual weaknesses
+emerges in both models, which is characterized by lower performance in
+receptive grammar (TROG) and phonological decoding (Phonics) relative to
+sentence-level skills.
 
-At the same time, differences in class separation and profile granularity indicate that this pattern is embedded within a broader severity dimension. Thus, the 5-profile solution can be understood as providing a more fine-grained partitioning of variation that is already present, but less differentiated, in the more parsimonious 3-profile model.
+In the VVE solution, this pattern appears within the lowest-performing
+profile (red line), whereas in the 5-profile Model 2 solution it is
+isolated as a more distinct subgroup (orange). The recurrence of this
+feature across modeling frameworks (mclust vs. tidyLPA) and covariance
+specifications (VVE vs. diagonal Model 2) suggests that this contrast
+reflects a stable aspect of the observed score structure rather than a
+model-specific artifact.
+
+At the same time, differences in class separation and profile
+granularity indicate that this pattern is embedded within a broader
+severity dimension. Thus, the 5-profile solution can be understood as
+providing a more fine-grained partitioning of variation that is already
+present, but less differentiated, in the more parsimonious 3-profile
+model.
 
 ```{r figure-comparison, , fig.width=15, fig.height=7, fig.cap="**Figure 7.** *VVE 3-classe solution vs. Model 2 (VVI) 3-class solution*"}
 
@@ -527,14 +679,34 @@ combined_final
 
 #### Cross-Model Classification Analysis
 
-To evaluate the extent to which the VVE 3-profile solution and the Model 2 5-profile solution recover similar latent groupings, we conducted a cross-model classification analysis based on individual-level class assignments. Overall agreement between the two solutions was modest (Adjusted Rand Index = .32), indicating that the models do not identify identical partitions of the sample.
+To evaluate the extent to which the VVE 3-profile solution and the Model
+2 5-profile solution recover similar latent groupings, we conducted a
+cross-model classification analysis based on individual-level class
+assignments. Overall agreement between the two solutions was modest
+(Adjusted Rand Index = .32), indicating that the models do not identify
+identical partitions of the sample.
 
-Particular attention was given to the apparent similarity between VVE Class 3 and Model 2 Class 3 with the double weaknesses in the profile plots. Despite their visual resemblance, cross-model classification analyses indicated that these classes do not represent the same subgroup of individuals.
+Particular attention was given to the apparent similarity between VVE
+Class 3 and Model 2 Class 3 with the double weaknesses in the profile
+plots. Despite their visual resemblance, cross-model classification
+analyses indicated that these classes do not represent the same subgroup
+of individuals.
 
-Specifically, Model 2 Class 3 was composed primarily of individuals from the middle-performing VVE class (72.7%), with a smaller contribution from the lowest-performing VVE class (27.3%), and no representation from the highest-performing class. Conversely, only a negligible proportion of individuals in VVE Class 3 (approximately 2%) were assigned to Model 2 Class 3; instead, the majority were distributed across other Model 2 classes, particularly Class 5 (52.4%).
+Specifically, Model 2 Class 3 was composed primarily of individuals from
+the middle-performing VVE class (72.7%), with a smaller contribution
+from the lowest-performing VVE class (27.3%), and no representation from
+the highest-performing class. Conversely, only a negligible proportion
+of individuals in VVE Class 3 (approximately 2%) were assigned to Model
+2 Class 3; instead, the majority were distributed across other Model 2
+classes, particularly Class 5 (52.4%).
 
-These results indicate that Model 2 Class 3 does not correspond to a direct refinement of the lowest-performing VVE group. Rather, it reflects a recombination of individuals drawn primarily from the middle-performing class, augmented by a subset of lower-performing students. The similarity in profile shape across models therefore appears to arise from a shared contrast in the data—rather than from a stable subgroup with consistent membership across model specifications.
-
+These results indicate that Model 2 Class 3 does not correspond to a
+direct refinement of the lowest-performing VVE group. Rather, it
+reflects a recombination of individuals drawn primarily from the
+middle-performing class, augmented by a subset of lower-performing
+students. The similarity in profile shape across models therefore
+appears to arise from a shared contrast in the data—rather than from a
+stable subgroup with consistent membership across model specifications.
 
 ```{r classfication_overlap}
 # Cross-model classification overlap:
@@ -657,5 +829,297 @@ overlap_summary
 
 ```
 
+### Multi-group LPA
+
+We conducted the multigroup Latent Profile Analysis (MGLPA) to examine
+whether the 5-profile structure is invarianet between two grade-bands:
+grades 2-3 and grades 4-5. The MGLPA results are summarized in Table 2.
+The 5-profile solution demonstrated robust statistical fit and high
+classification clarity (Entropy = 0.83). The Bootstrap Likelihood Ratio
+Test ($p < .01$) confirmed that the 5-profile structure significantly
+outperformed the 4-profile model. Notably, the smallest identified
+subgroup represented 8.7% of the total sample, ensuring sufficient group
+stability for comparing developmental patterns across grade-bands.
+
+```{r data_prep_multi}
+# Create the two developmental groups
+df_groups <- df %>%
+  filter(user_grade_at_run < 6) %>% 
+  mutate(grade_group = ifelse(user_grade_at_run <= 3, 
+                              "Grades 2-3", "Grades 4-5"))
+
+# Standardize WITHIN each group 
+# (Critical for developmental comparison)
+df_std_grouped <- df_groups %>%
+  group_by(grade_group) %>%
+  mutate(across(all_of(order), ~as.numeric(scale(.)))) %>%
+  ungroup()
+
+dat_numeric <- df_std_grouped %>%
+  select(all_of(order))
+
+group_vector <- df_std_grouped$grade_group
+```
+
+```{r multiG_LPA_fits}
+library(tidyLPA)
+# Estimate the 5-profile model across groups
+# We use 'estimate_profiles' with the 'group' argument
+mg_lpa <- dat_numeric %>%
+  estimate_profiles(n_profiles = 5, 
+                    package = "mclust", 
+                    model_names = "VVI",
+                    group = group_vector) 
+
+# Get results
+fit_stats <- get_fit(mg_lpa) 
 
 
+library(dplyr)
+library(kableExtra)
+
+# Select and clean the columns for the report
+mg_table_clean <- fit_stats %>%
+  select(Classes, LogLik, BIC, Entropy, n_min, BLRT_p) %>%
+  mutate(
+    # Convert n_min to a more readable percentage
+    n_min = paste0(round(n_min * 100, 1), "%"),
+    # Round the large stats
+    across(c(LogLik, BIC, Entropy), ~round(., 2))
+  )
+
+# Create the professional HTML table
+mg_table_clean %>%
+  kbl(caption = "Table 2. Fit Indices for Multigroup Latent Profile Analysis (N=1,504)",
+      col.names = c("Profiles", "Log-Likelihood", "BIC", "Entropy", "Smallest Class %", "BLRT (p)"),
+      align = "c") %>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  # Adding a note about the multigroup structure
+  footnote(general = "Note: Data were standardized within grade-bands (Grades 2-3 vs. 4-5) prior to analysis. 
+           BIC: Bayesian Information Criterion; BLRT: Bootstrap Likelihood Ratio Test.")
+
+```
+
+#### Profile Plots
+
+While the 5-profile structure remained statistically stable across
+grade-bands, a qualitative comparison of profile shapes revealed a
+notable developmental shift in the nature of the most profound reading
+difficulty.
+
+```{r mg_profile_line_plots}
+
+mg_data <- get_data(mg_lpa)
+mg_data$group <- group_vector
+
+# --- 2. Manually calculate the means for each Class WITHIN each Group ---
+mg_plot_data <- mg_data %>%
+  # Use the actual column names of your 8 tests
+  pivot_longer(cols = all_of(order), names_to = "Parameter", values_to = "Estimate") %>%
+  group_by(group, Class, Parameter) %>%
+  summarise(Mean_Estimate = mean(Estimate), .groups = "drop") %>%
+  mutate(Parameter = factor(Parameter, levels = order))
+
+# --- 3. Plot with Faceting by Grade Group ---
+# Define colors to match your bar chart (2 = Red/Struggling)
+mg_colors <- c("1"="#1f77b4", "2"="#d62728", "3"="#9467bd", "4"="#ff7f0e", "5"="#2ca02c")
+
+ggplot(mg_plot_data, aes(x = Parameter, y = Mean_Estimate, group = factor(Class), color = factor(Class))) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  # This creates the side-by-side Younger vs Older view
+  facet_wrap(~group) + 
+  scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
+  scale_color_manual(values = mg_colors) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+    legend.position = "none",
+    strip.background = element_rect(fill = "gray95"),
+    strip.text = element_text(face = "bold")
+  ) +
+  labs(
+    title = "Reading Profiles: Developmental Comparison",
+    subtitle = "Z-Scores standardized within grade-bands.",
+    y = "Mean Z-Score (Within-Group)",
+    x = NULL
+  )
+```
+
+In the primary grades (2-3), the lowest performing class (Red Profile)
+was characterized by an 'orthographic bottleneck,' where phonological
+decoding (Phonics) represented the most profound deficit (Z≈−2.0Z
+\approx -2.0Z≈−2.0). In contrast, by upper elementary (4-5), the
+weakness of the lowest class shifted toward a 'comprehension
+bottleneck.' For these older struggling readers, the most severe
+weaknesses were observed in academic vocabulary (CVA) and morphological
+knowledge, while decoding skills showed relative maturation.
+
+These patterns appear to align with the common notion that as students
+progress through the grades, the primary hurdle for the most at-risk
+learners evolves from a failure to master the alphabetic code to a
+failure to keep pace with the increasing linguistic and comprehension
+demands.
+
+The absence of the specific syntactic-phonological "double-weakness"
+profile in the by-grade analysis is likely a function of statistical
+power and profile dilution. This highly specific subgroup represented
+only 2.9% of the total grades 2-5 sample, and splitting the data into
+two grade bands reduced the $N$ for such a rare phenotype below the
+threshold for the model to reliably identify it as a distinct class.
+Instead, these students were likely re-absorbed into other lower
+profiles.
+
+```{r prevalence}
+# Create the prevalence cross-tab
+prevalence_summary <- mg_data %>%
+  group_by(group, Class) %>%
+  tally() %>%
+  group_by(group) %>%
+  mutate(Prevalence_Pct = round(n / sum(n) * 100, 1)) %>%
+  arrange(Class, group)
+
+print(prevalence_summary)
+```
+
+#### Profile Prevalence
+
+The prevalence of the five classes within each grade-bands indicated a
+probable polarization between high- and low-performing students as they
+transition from primary to upper-elementary grades.
+
+**Increase at the Top**: The Proficient group (Green) represents a
+larger share of the population in Grades 4–5 (35.6%) compared to Grades
+2–3 (31.4%), suggesting an upward trajectory.
+
+**Cumulative Risk at the Bottom**: Conversely, the proportion of
+students in the two lowest profiles—Below Average and Far-below
+Average—increases slightly from a combined 31.7% in the younger group to
+37.4% in the older group.
+
+**The Shrinking Middle**: The "Middle" two groups (Above Average and Low
+Average) collectively shrink by nearly 10 percentage points.
+
+**The Diagnostic Takeaway**: These results suggest that reading profiles
+in our sample may become **increasingly polarized** as students progress
+through the grades. It is important to note that because these are
+**cross-sectional data**, we cannot definitively infer longitudinal
+growth trajectories for individual students from this analysis alone.
+**However, the distributional shift is notable**: while a large portion
+of the older cohort appears to have shifted toward proficiency, a
+substantial and growing subgroup remains 'stuck' or falls further behind
+their grade-level peers. This pattern may reflect a widening achievement
+gap where early struggles in foundational skills compound over time,
+making it increasingly difficult for the lowest-performing students to
+keep pace with the rising linguistic demands of the upper-elementary
+curriculum.
+
+```{r prevalence_plot}
+
+library(ggplot2)
+# 1. Map the colors to the specific Class numbers from your multigroup results
+
+# Order: Class 1 (Green), Class 4 (Blue), Class 5 (Purple), Class 3 (Orange), Class 2 (Red)
+mg_colors <- c(
+  "1" = "#2ca02c", # Proficient
+  "4" = "#1f77b4", # Above Average
+  "5" = "#9467bd", # Low Average
+  "3" = "#ff7f0e", # Below Average
+  "2" = "#d62728"  # Far-below Average
+)
+
+library(ggplot2)
+
+# 1. Define the named vector for labels
+expert_labels <- c(
+  "1" = "Proficient",
+  "4" = "Above Average",
+  "5" = "Low Average",
+  "3" = "Below Average",
+  "2" = "Far-below Average"
+)
+
+# 2. Define the scholarly 'High-to-Low' order for the X-axis
+expert_x_order <- c("1", "4", "5", "3", "2")
+
+# 3. Create the aligned bar chart
+ggplot(prevalence_summary, aes(x = factor(Class, levels = expert_x_order), 
+                               y = Prevalence_Pct, 
+                               fill = factor(Class), 
+                               alpha = group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), 
+           width = 0.7, color = "white", show.legend = FALSE) +
+  
+  # Data labels on top of bars
+  geom_text(aes(label = paste0(round(Prevalence_Pct, 1), "%")), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.5, size = 3.5, fontface = "bold") +
+  
+  # Map the COLORS
+  scale_fill_manual(values = mg_colors) +
+  
+  # Map the LABELS to the X-axis
+  scale_x_discrete(labels = expert_labels) +
+  
+  # Map Transparency for Grade Bands
+  scale_alpha_manual(values = c("Grades 2-3" = 1.0, "Grades 4-5" = 0.6)) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none", 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 16),
+    axis.text.x = element_text(color = "black"),
+    axis.title.x = element_blank() # Remove 'Class' title for a cleaner look
+  ) +
+  labs(
+    title = "Prevalence by Grade Band",
+    subtitle = "Solid: Grades 2-3 | Muted: Grades 4-5",
+    y = "Percentage of Students (%)"
+  ) +
+  ylim(0, 45)
+
+```
+
+### Dimensionality Analysis
+
+To evaluate the underlying structure of the eight ROAR measures, we conducted a Parallel Analysis using the psych package in R. As shown in the Parallel Analysis Scree Plot, the results indicated a clear unidimensional structure. The first factor achieved an eigenvalue of approximately 5.1, significantly exceeding the thresholds generated from simulated and resampled data. No subsequent factors exceeded the simulated noise levels.
+
+**The Takeaway**: This statistical evidence suggests that for the majority of the sample, foundational reading and language comprehension skills are highly integrated into **a single 'General Reading Ability' construct**. This unidimensionality accounts for the high degree of parallelism observed in the primary latent profiles. 
+
+However, the emergence of the non-parallel 'Double-Deficit' profile in higher-order solutions highlights a small but critical subgroup whose skill configurations deviate from this general developmental trend.
+
+
+```{r efa}
+library(psych)
+# 1. Determine how many factors to extract (Parallel Analysis)
+# This is the 'BIC plot' equivalent for EFA
+fa.parallel(scaled_scores_na, fa = "fa")
+```
+
+#### Factor Structure and Construct Integration
+
+To examine the dimensionality of the eight assessment measures, we conducted an Exploratory Factor Analysis (EFA) with a two-factor target and oblimin rotation. The results strongly supported a unidimensional structure. All eight measures loaded heavily onto a single primary factor (MR1), with loadings ranging from .68 to .91. This single factor accounted for 64.1% of the total variance in student performance.
+
+```{r factor_structure}
+
+# Run the EFA
+# We use 'oblimin' rotation because we expect Language and Code to correlate
+efa_results <- fa(scaled_scores_na, 
+                  nfactors = 2, rotate = "oblimin")
+
+# 3. Look at the loadings
+print(efa_results$loadings, cutoff = 0)
+```
+
+A second factor (MR2) failed to achieve statistical or substantive significance, explaining only 3.2% of additional variance with no variables loading above the .30 threshold. 
+
+While the earlier Parallel Analysis and Eigenvalues ($SS < 1.0$) confirm a unidimensional structure, the residual loadings in the non-significant second factor (MR2) provide an interesting diagnostic information we observed with the latent profile analysis with the full grades 2-5 sample. 
+
+Specifically, the variables that showed the most variance in the latent profile analysis—receptive grammar (TROG) and phonological decoding—showed a shared directional pull in MR2 ($loadings \approx .20$ to $.25$) that contrasted with sentence-level performance ($loading \approx -.29$).
+
+This suggests that although reading ability is 64% unidimensional in this sample, the primary axis of 'divergence' for struggling readers involves a split between structural linguistic/phonological skills and contextual sentence processing. 
+
+This provides the structural justification for our use of Model 2 (varying variances) in the LPA, as it allows the model to capture this specific pattern of divergence that the general factor otherwise obscures.
