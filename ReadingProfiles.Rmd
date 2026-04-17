@@ -1,5 +1,8 @@
 ---
 title: "Reading Profile Analysis"
+subtitle: "N = 1,504 (grades 2-5)"
+author: "Yukie Toyama"
+date: "2026-94-17"
 output: 
   html_document:
     toc: yes
@@ -27,7 +30,7 @@ library(corrplot)
 
 ```
 
-We conducted latent profile analysis. Initial dataset includes students in grades 2-8 but we sub-setted to include a total of 1,504 students in grades 2-5 who completed eight ROAR-measures.
+We conducted latent profile analysis. Initial dataset includes students in grades 2-8 but we subsetted it to include a total of 1,504 students in **grades 2-5** who completed eight ROAR-measures.
 
 ```{r write-out-anonymized-data}
 # Load in raw data and write out a simplified and totally de-identified data frame
@@ -41,7 +44,8 @@ df <- df %>% select(all_of(varnames)) %>%
 ```{r data-prep}
 # Histogram of grades (K-8)
 ggplot(df, aes(x=user_grade_at_run)) +
-  geom_histogram() 
+  geom_histogram() +
+  labs(title = "Figure 1. Histogram of students in the original dataset (grades 2-8) who completed all 8 ROAR-measures.")
 
 # create a new matrix with the variables used for clustering and removing any row with an NAN and filtering to grades 2-5
 df.mclust <- 
@@ -59,7 +63,8 @@ scaled_scores_na <- df.mclust_na %>%
 
 ### Correlation
 
-```{r corr_matrix}
+
+```{r corr_mat, fig.cap="**Figure 2.** *Correlations among eight ROAR measures (N = 1504)*"}
 # compute correlation matrix and visualize
 c = cor(scaled_scores_na)
 corrplot(c, 
@@ -83,6 +88,10 @@ corrplot(c,
 
 ### Latent Profile Analysis
 
+**On this page:**
+- [Step 1: Exploratory Model Selection (mclust)](#step1)
+- [Step 2. Model Selection & Fit (tidyLPA)](#step2)
+
 ```{r lpa-model-1, echo=FALSE}
 # Following these instructions for latent profile analysis https://willhipson.netlify.app/post/latent-profile/latent-profile/ 
 
@@ -92,11 +101,11 @@ corrplot(c,
 
 BIC <- mclustBIC(scaled_scores_na)
 ```
-#### **Step 1. Exploratory Model Selection (mclust)**
+#### Step 1. Exploratory Model Selection (mclust){#step1}
 
-We identified optimal student subgroups by conducting a Latent Profile Analysis (LPA) using the Mclust function within the *mclust* package in R. This package utilizes a Gaussian Mixture Modeling framework to identify unobserved (latent) groups within the data. Based on a systematic comparison of 14 different model structures in the **Model Specification Plot (Figure 1)**, we selected a 3-profile solution using a **VVE** (Variable volume, Variable shape, Equal orientation) specification.
+We sought to identify optimal student subgroups by conducting a Latent Profile Analysis (LPA) using the Mclust function within the *mclust* package in R. This package utilizes a Gaussian Mixture Modeling framework to identify unobserved (latent) groups within the data. Based on a systematic comparison of 14 different model structures in the **Model Specification Plot (Figure 1)**, we selected a 3-profile solution using a **VVE** (Variable volume, Variable shape, Equal orientation) specification.
 
-This model was chosen because it achieved a peak in the Bayesian Information Criterion (BIC), indicating a superior balance between model fit and complexity. The VVE structure is particularly well-suited for reading data as it allows for subgroups of different sizes and different levels of score-variance, reflecting the reality that struggling reader groups are often smaller and more heterogeneous than typical reader groups. This rigorous selection process ensures the identified profiles represent meaningful, distinct patterns of reading skills rather than statistical noise
+This model was chosen because it achieved a peak in the Bayesian Information Criterion (BIC), indicating a superior balance between model fit and complexity. The VVE structure is particularly well-suited for reading data as it allows for subgroups of different sizes and different levels of score-variance, reflecting the reality that struggling reader groups are often smaller and more heterogeneous than typical reader groups. This selection process ensures the identified profiles represent meaningful, distinct patterns of reading skills rather than statistical noise
 
 ```{r bic-plot, fig.cap="**Figure 1.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
 plot(BIC)
@@ -121,7 +130,7 @@ As shown in the ICL Model Selection Plot (Figure 2), fit indices for the top-per
 ICL <- mclustICL(scaled_scores_na)
 ```
 
-```{r icl_plot, fig.cap="**Figure 2.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
+```{r icl_plot, fig.cap="**Figure 3.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
 plot(ICL)
 ```
 
@@ -170,7 +179,7 @@ means <- data.frame(mod1$parameters$mean) %>%
 
 Figure 3 shows the strength and weakness of the three latent profiles on the eight ROAR-measures.
 
-```{r profile_plot, fig.cap="**Figure 3.** *Latent Profiles of Reading and Language Skills. Z-Scores relative to sample average (N = 1504)*"}
+```{r profile_plot, fig.cap="**Figure 4.** *Latent Profiles of Reading and Language Skills. Z-Scores relative to sample average (N = 1504)*"}
 library(stringr)
 
 # 1. Define your labels with percentages
@@ -237,7 +246,7 @@ The Pattern: All lower than the other two profiles with distinct valleys with tr
 Interpretation: This groups has specific double weaknesses. They are not just "globally low" like the low-average group; they have massive, specific "drops" in Phonics and Grammar that are out of proportion with their other skills.
 
 
-#### Step 2. Formal Model Validation and Fit Comparison (tidyLPA)
+#### Step 2. Model Selection & Fit (tidyLPA){#step2}
 
 Following the exploratory model search in *mclust*, which suggested a 3-profile structure, we conducted a formal validation using the *tidyLPA* package. This transition allows for a more parsimonious comparison of fit indices—specifically Entropy and the Bootstrap Likelihood Ratio Test (BLRT)—ensuring that the final profiles are both statistically robust and clearly differentiated. Additionally, while the *mclust* package was used to explore complex covariance structures (like VVE), this tidyLPA approach utilizes a more parsimonious 'Model 1' specification (equal variances and zero covariances), and 'Model 2' (varying variances), along with VVE. Models 1 and 2 provide a more conservative and highly interpretable framework for selecting and reporting the final student profiles.
 
@@ -336,18 +345,17 @@ all_comparisons_short <- bind_rows(
   vve_fit_row
 )
 
-# --- 5. Clean and Present for the Team ---
+# --- Clean and Present ---
 all_comparisons_short %>%
   mutate(across(c(BIC, Entropy, n_min), ~round(., 2))) %>%
   arrange(Model_Type, Classes) %>% 
-  kbl(caption = "Table 2. Sensitivity Analysis: Comparing Profile Solutions across Model Specifications (Z-Scores)") %>%
+  kbl(caption = "Table 1. Sensitivity Analysis: Comparing Profile Solutions across Model Specifications (Z-Scores)") %>%
   kable_classic(full_width = F, html_font = "Arial") 
 # %>%
 #   # Highlight all 3-profile solutions to compare the 'Winner' across specifications
 #   row_spec(which(all_comparisons$Classes == 3), bold = T, background = "#f9f9f9")
 
 ```
-
 
 ##### Four profiles from Model 2 (varying var)
 
@@ -357,17 +365,16 @@ Figure below shows four profiles from Model 2 (varying variances, zero covarianc
 
 **The Diagnostic Takeaway**: The 4-profile solution (Model 2) primarily reflects a unidimensional severity gradient. Because the profiles are largely parallel across all eight indicators, the differences between subgroups appear to be quantitative (differences in degree of skills) rather than qualitative (differences in the pattern of skills). This suggests that within this 4-class framework, the latent space is defined by a singular 'general reading ability' factor where students are distinguished by their overall developmental level.
 
-```{r profile_plots_m2.c4}
+```{r profile_plots_m2.c4, fig.cap="**Figure 5.** *Model 2: 4-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
 
-# --- Step 1: Get the Model Results ---
-# Save the fitted models specifically so we can plot them
+# ---Get the Model Results ---
 mod2_fitted <- scaled_scores_na %>%
   estimate_profiles(1:5, package = "mclust", 
                     variances = "varying", covariances = "zero")
 
 model2_4class <- mod2_fitted[[4]]
 
-# --- Step 2: Get Estimates and Calculate % ---
+# ---Get Estimates and Calculate % ---
 plot_data_4 <- get_estimates(model2_4class) %>%
   dplyr::filter(Category == "Means") %>%
   mutate(Parameter = factor(Parameter, levels = order))
@@ -376,7 +383,7 @@ plot_data_4 <- get_estimates(model2_4class) %>%
 counts_4 <- table(get_data(model2_4class)$Class)
 pcts_4 <- round(prop.table(counts_4) * 100, 1)
 
-# --- Step 3: Create the Plot ---
+# --- Create the Plot ---
 ggplot(plot_data_4, aes(x = Parameter, y = Estimate, group = factor(Class), color = factor(Class))) +
   geom_point(size = 3) +
   geom_line(linewidth = 1.2) +
@@ -391,9 +398,7 @@ ggplot(plot_data_4, aes(x = Parameter, y = Estimate, group = factor(Class), colo
   theme(axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
         legend.position = "bottom",
         legend.title = element_blank()) +
-  labs(title = "Model 2: 4-Profile Solution (varying variances)",
-       subtitle = "Z-scores relative to sample average (N = 1504)",
-       y = "Mean Z-Score (relative to average)",
+  labs(y = "Mean Z-Score (relative to average)",
        x = "ROAR Measures")
 
 ```
@@ -409,12 +414,12 @@ Figure below displays the five profiles from Model 2 (varying variances, zero co
 
 This suggests that reading risk in this population is not purely a matter of being "behind" in every skill. By moving to a 5-class framework, we transition from a model of **global developmental delay** to one that detects a small group of students with **specific needs**. This granularity is critical for instructional utility, as it distinguishes students who require a general increase in support from those who require specialized interventions targeting specific linguistic and phonological hurdles.
 
-```{r profile_plots_m2.c5}
+```{r profile_plots_m2.c5, fig.cap="**Figure 6.** *Model 2: 5-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
 
-# --- Step 1: Extract the 5rd model in your mod2_fitted list ---
+# --- Extract the 5rd model in your mod2_fitted list ---
 model2_5class <- mod2_fitted[[5]] 
 
-# --- Step 2: Prepare the Data ---
+# --- Prepare the Data ---
 plot_data_5 <- get_estimates(model2_5class) %>%
   dplyr::filter(Category == "Means") %>%
   mutate(Parameter = factor(Parameter, levels = order))
@@ -423,7 +428,7 @@ plot_data_5 <- get_estimates(model2_5class) %>%
 counts_5 <- table(get_data(model2_5class)$Class)
 pcts_5 <- round(prop.table(counts_5) * 100, 1)
 
-# --- Step 3: Create the Plot ---
+# Create the Plot
 
 m2c5.plot <- ggplot(plot_data_5, 
        aes(x = Parameter, y = Estimate, 
@@ -443,9 +448,7 @@ m2c5.plot <- ggplot(plot_data_5,
   theme(axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
         legend.position = "bottom",
         legend.title = element_blank()) +
-  labs(title = "Model 2: 5-Profile Solution (varying variances)",
-       subtitle = "Z-scores relative to sample average (N = 1,504)",
-       y = "Mean Z-Score (Relative to Average)",
+  labs(y = "Mean Z-Score (Relative to Average)",
        x = "ROAR Measures")
 
 m2c5.plot
@@ -454,58 +457,69 @@ m2c5.plot
 
 ### Cross-Model Convergence
 
-Figure below presents the VVE 3-profile solution alongside the Model 2 5-profile solution. Notably, a similar configuration of dual weaknesses emerges in both models, which is characterized by lower performance in receptive grammar (TROG) and phonological decoding (Phonics) relative to sentence-level skills.
+Figure 7 below presents the VVE 3-profile solution alongside the Model 2 5-profile solution. Notably, a similar configuration of dual weaknesses emerges in both models, which is characterized by lower performance in receptive grammar (TROG) and phonological decoding (Phonics) relative to sentence-level skills.
 
 In the VVE solution, this pattern appears within the lowest-performing profile (red line), whereas in the 5-profile Model 2 solution it is isolated as a more distinct subgroup (orange). The recurrence of this feature across modeling frameworks (mclust vs. tidyLPA) and covariance specifications (VVE vs. diagonal Model 2) suggests that this contrast reflects a stable aspect of the observed score structure rather than a model-specific artifact.
 
 At the same time, differences in class separation and profile granularity indicate that this pattern is embedded within a broader severity dimension. Thus, the 5-profile solution can be understood as providing a more fine-grained partitioning of variation that is already present, but less differentiated, in the more parsimonious 3-profile model.
 
-```{r figure-comparison, fig.width=14, fig.height=7}
+```{r figure-comparison, , fig.width=15, fig.height=7, fig.cap="**Figure 7.** *VVE 3-classe solution vs. Model 2 (VVI) 3-class solution*"}
 
-m2.c5.plot <- ggplot(plot_data_5, aes(x = Parameter, y = Estimate, group = factor(Class), color = factor(Class))) +
-  geom_point(size = 3) +
-  geom_line(linewidth = 1.2) +
+library(ggplot2)
+library(patchwork)
+library(stringr)
+
+# 1. Create a shared Y-axis limit so the gridlines match exactly
+# Adjust these numbers based on your data's actual min/max
+y_limits <- c(-2.5, 1.5) 
+
+# 2. Refine the Model 2 Plot
+m2_fixed <- ggplot(plot_data_5, aes(x = Parameter, y = Estimate, group = factor(Class), color = factor(Class))) +
+  geom_point(size = 2.5) +
+  geom_line(linewidth = 1) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", alpha = 0.4) +
   geom_errorbar(aes(ymin = Estimate - 1.96*se, ymax = Estimate + 1.96*se), width = 0.1, alpha = 0.3) +
+  # Sync the Y-axis across both plots
+  coord_cartesian(ylim = y_limits) +
   scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
   scale_color_manual(
     values = c("1"="#2ca02c", "2"="#d62728", "3"="#ff7f0e", "4"="#1f77b4", "5"="#9467bd"),
     labels = paste0("Class ", names(pcts_5), " (", pcts_5, "%)")
   ) +
-  # --- CRITICAL: Forces the legend into 2 rows ---
-  guides(color = guide_legend(nrow = 2, byrow = TRUE)) + 
-  theme_minimal(base_size = 12) +
+  theme_minimal(base_size = 11) +
   theme(
-    axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+    axis.text.x = element_text(angle = 60, hjust = 1), 
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank() 
+  ) +
+  labs(
+    title = "Model 2 (VVI): 5-Profile Solution",
+    x = "ROAR Measures"
+  ) +
+  guides(color = guide_legend(ncol = 2, override.aes = list(size = 3)))
+
+# 3. Apply similar limits/cleanup to the first plot (vve.c3.titles)
+vve_clean <- vve.c3.titles + 
+  coord_cartesian(ylim = y_limits) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1),
     legend.position = "bottom",
     legend.title = element_blank(),
     panel.grid.minor = element_blank()
   ) +
-  labs(
-    title = "Model 2: 5-Profile Solution",
-    subtitle = NULL, # Removes the subtitle
-    y = "Mean Z-Score (Relative to Average)",
-    x = "ROAR Measures"
-  )
+  labs(y = "Mean Z-Score")
 
-# --- 2. Fix Model 2 Plot (5-Profile) ---
-# We use 2 columns for the 5-profile legend to save vertical space
-m2_fixed <- m2.c5.plot + 
+# 4. Combine with Patchwork
+combined_final <- (vve_clean | m2_fixed) + 
+  plot_layout(widths = c(1, 1)) & 
   theme(
-    plot.subtitle = element_blank(), 
-    legend.position = "bottom",
-    legend.box = "vertical",
-    legend.text = element_text(size = 9)
-  ) +
-  guides(color = guide_legend(ncol = 2)) # Two columns to balance the 5 items
-
-# --- 3. Combine with Patchwork and Add Space ---
-# 'plot_layout(widths = c(1, 1))' ensures they have equal ground
-# Adding '& theme(plot.margin = margin(10, 10, 10, 10))' adds breathing room
-library(patchwork)
-combined_final <- patchwork::wrap_plots(vve.c3.titles, m2_fixed, ncol = 2) + 
-  plot_layout(guides = "keep") & 
-  theme(plot.margin = margin(5, 15, 5, 15))
+    plot.margin = margin(10, 10, 10, 10),
+    legend.box.margin = margin(t = -10) # Pulls legend closer to plot
+  )
 
 combined_final
 
