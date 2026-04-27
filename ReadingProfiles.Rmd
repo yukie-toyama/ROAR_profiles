@@ -42,6 +42,10 @@ varnames <- c("word_theta", "phonics_theta" ,"phoneme_theta", "sentence_score", 
 df <- df %>% select(all_of(varnames)) %>%
   round(digits=2)
 # write.csv(df, "data/deidentified_reading_profile_data_2026-03-03.csv")
+
+# library(summarytools)
+# view(dfSummary(df))
+# view(dfSummary(df.mclust))
 ```
 
 ```{r data-prep}
@@ -49,6 +53,12 @@ df <- df %>% select(all_of(varnames)) %>%
 ggplot(df, aes(x=user_grade_at_run)) +
   geom_histogram() +
   labs(title = "Figure 1. Histogram of students in the original dataset (grades 2-8) who completed all 8 ROAR-measures.")
+
+# table by grade
+library(janitor)
+df %>% mutate(grade = factor(user_grade_at_run)) %>% 
+  tabyl(grade) %>% adorn_totals() %>% 
+  adorn_pct_formatting()
 
 # create a new matrix with the variables used for clustering and removing any row with an NAN and filtering to grades 2-5
 df.mclust <- 
@@ -242,14 +252,14 @@ means <- data.frame(mod1$parameters$mean) %>%
 Figure 3 shows the strength and weakness of the three latent profiles on
 the eight ROAR-measures.
 
-```{r profile_plot, fig.cap="**Figure 4.** *Latent Profiles of Reading and Language Skills. Z-Scores relative to sample average (N = 1504)*"}
+```{r profile_plot, fig.width=10, fig.height=5, fig.cap="**Figure 4.** *Latent Profiles of Reading and Language Skills. Z-Scores relative to sample average (N = 1504)*"}
 library(stringr)
 
 # 1. Define your labels with percentages
 labels_with_pct <- c(
-  "X1" = "Proficient (52.6%)", 
-  "X3" = "Low Average (39.6%)", 
-  "X2" = "Struggling (esp. Grammar & Phonics) (7.8%)"
+  "X1" = "Class 1 (52.6%)", 
+  "X3" = "Class 3 (39.6%)", 
+  "X2" = "Class 2 (esp. Grammar & Phonics) (7.8%)"
 )
 
 # 2. Plotting with strict legend control
@@ -479,7 +489,7 @@ suggests that within this 4-class framework, the latent space is defined
 by a singular 'general reading ability' factor where students are
 distinguished by their overall developmental level.
 
-```{r profile_plots_m2.c4, fig.cap="**Figure 5.** *Model 2: 4-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
+```{r profile_plots_m2.c4, fig.width=10, fig.height=5, fig.cap="**Figure 5.** *Model 2: 4-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
 
 # ---Get the Model Results ---
 mod2_fitted <- scaled_scores_na %>%
@@ -549,7 +559,7 @@ distinguishes students who require a general increase in support from
 those who require specialized interventions targeting specific
 linguistic and phonological hurdles.
 
-```{r profile_plots_m2.c5, fig.cap="**Figure 6.** *Model 2: 5-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
+```{r profile_plots_m2.c5, fig.width=10, fig.height=5, fig.cap="**Figure 6.** *Model 2: 5-Profile Solution (varying variances). Z-Scores relative to sample average (N = 1504)*"}
 
 # --- Extract the 5rd model in your mod2_fitted list ---
 model2_5class <- mod2_fitted[[5]] 
@@ -638,7 +648,7 @@ m2_fixed <- ggplot(plot_data_5, aes(x = Parameter, y = Estimate, group = factor(
     values = c("1"="#2ca02c", "2"="#d62728", "3"="#ff7f0e", "4"="#1f77b4", "5"="#9467bd"),
     labels = paste0("Class ", names(pcts_5), " (", pcts_5, "%)")
   ) +
-  theme_minimal(base_size = 11) +
+  theme_minimal(base_size = 14) +
   theme(
     axis.text.x = element_text(angle = 60, hjust = 1), 
     legend.position = "bottom",
@@ -656,7 +666,7 @@ m2_fixed <- ggplot(plot_data_5, aes(x = Parameter, y = Estimate, group = factor(
 # 3. Apply similar limits/cleanup to the first plot (vve.c3.titles)
 vve_clean <- vve.c3.titles + 
   coord_cartesian(ylim = y_limits) +
-  theme_minimal(base_size = 11) +
+  theme_minimal(base_size = 14) +
   theme(
     axis.text.x = element_text(angle = 60, hjust = 1),
     legend.position = "bottom",
@@ -671,7 +681,7 @@ combined_final <- (vve_clean | m2_fixed) +
   theme(
     plot.margin = margin(10, 10, 10, 10),
     legend.box.margin = margin(t = -10) # Pulls legend closer to plot
-  )
+  ) 
 
 combined_final
 
@@ -912,36 +922,45 @@ difficulty.
 mg_data <- get_data(mg_lpa)
 mg_data$group <- group_vector
 
-# --- 2. Manually calculate the means for each Class WITHIN each Group ---
-mg_plot_data <- mg_data %>%
-  # Use the actual column names of your 8 tests
-  pivot_longer(cols = all_of(order), names_to = "Parameter", values_to = "Estimate") %>%
+# --- 2. Manually calculate M & se for each Class WITHIN each Group
+mg_plot_data_with_se <- mg_data %>%
+  # Pivot assessment columns to a long format
+  pivot_longer(cols = all_of(order), names_to = "Parameter", values_to = "Score") %>%
   group_by(group, Class, Parameter) %>%
-  summarise(Mean_Estimate = mean(Estimate), .groups = "drop") %>%
+  summarise(
+    Mean_Estimate = mean(Score, na.rm = TRUE),
+    # Calculate Standard Error: SD / sqrt(n)
+    se = sd(Score, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  # Re-apply your expert storytelling order
   mutate(Parameter = factor(Parameter, levels = order))
 
 # --- 3. Plot with Faceting by Grade Group ---
 # Define colors to match your bar chart (2 = Red/Struggling)
 mg_colors <- c("1"="#1f77b4", "2"="#d62728", "3"="#9467bd", "4"="#ff7f0e", "5"="#2ca02c")
 
-ggplot(mg_plot_data, aes(x = Parameter, y = Mean_Estimate, group = factor(Class), color = factor(Class))) +
+ggplot(mg_plot_data_with_se, aes(x = Parameter, y = Mean_Estimate, 
+                                 group = factor(Class), color = factor(Class))) +
+  # Add Error Bars FIRST so they sit behind the points
+  geom_errorbar(aes(ymin = Mean_Estimate - 1.96*se, 
+                    ymax = Mean_Estimate + 1.96*se), 
+                width = 0.2, alpha = 0.4) + 
   geom_point(size = 3) +
   geom_line(linewidth = 1.2) +
   geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
-  # This creates the side-by-side Younger vs Older view
   facet_wrap(~group) + 
-  scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
+  scale_x_discrete(labels = function(x) stringr::str_replace_all(x, "_theta|_score", "")) +
   scale_color_manual(values = mg_colors) +
   theme_minimal(base_size = 12) +
   theme(
     axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
     legend.position = "none",
     strip.background = element_rect(fill = "gray95"),
-    strip.text = element_text(face = "bold")
+    strip.text = element_text(face = "bold", size = 12)
   ) +
   labs(
-    title = "Reading Profiles: Developmental Comparison",
-    subtitle = "Z-Scores standardized within grade-bands.",
+    title = "Reading Profiles: Developmental Comparison with 95% CI",
     y = "Mean Z-Score (Within-Group)",
     x = NULL
   )
@@ -1085,12 +1104,23 @@ ggplot(prevalence_summary, aes(x = factor(Class, levels = expert_x_order),
 
 ### Dimensionality Analysis
 
-To evaluate the underlying structure of the eight ROAR measures, we conducted a Parallel Analysis using the psych package in R. As shown in the Parallel Analysis Scree Plot, the results indicated a clear unidimensional structure. The first factor achieved an eigenvalue of approximately 5.1, significantly exceeding the thresholds generated from simulated and resampled data. No subsequent factors exceeded the simulated noise levels.
+To evaluate the underlying structure of the eight ROAR measures, we
+conducted a Parallel Analysis using the psych package in R. As shown in
+the Parallel Analysis Scree Plot, the results indicated a clear
+unidimensional structure. The first factor achieved an eigenvalue of
+approximately 5.1, significantly exceeding the thresholds generated from
+simulated and resampled data. No subsequent factors exceeded the
+simulated noise levels.
 
-**The Takeaway**: This statistical evidence suggests that for the majority of the sample, foundational reading and language comprehension skills are highly integrated into **a single 'General Reading Ability' construct**. This unidimensionality accounts for the high degree of parallelism observed in the primary latent profiles. 
+**The Takeaway**: This statistical evidence suggests that for the
+majority of the sample, foundational reading and language comprehension
+skills are highly integrated into **a single 'General Reading Ability'
+construct**. This unidimensionality accounts for the high degree of
+parallelism observed in the primary latent profiles.
 
-However, the emergence of the non-parallel 'Double-Deficit' profile in higher-order solutions highlights a small but critical subgroup whose skill configurations deviate from this general developmental trend.
-
+However, the emergence of the non-parallel 'Double-Deficit' profile in
+higher-order solutions highlights a small but critical subgroup whose
+skill configurations deviate from this general developmental trend.
 
 ```{r efa}
 library(psych)
@@ -1101,7 +1131,12 @@ fa.parallel(scaled_scores_na, fa = "fa")
 
 #### Factor Structure and Construct Integration
 
-To examine the dimensionality of the eight assessment measures, we conducted an Exploratory Factor Analysis (EFA) with a two-factor target and oblimin rotation. The results strongly supported a unidimensional structure. All eight measures loaded heavily onto a single primary factor (MR1), with loadings ranging from .68 to .91. This single factor accounted for 64.1% of the total variance in student performance.
+To examine the dimensionality of the eight assessment measures, we
+conducted an Exploratory Factor Analysis (EFA) with a two-factor target
+and oblimin rotation. The results strongly supported a unidimensional
+structure. All eight measures loaded heavily onto a single primary
+factor (MR1), with loadings ranging from .68 to .91. This single factor
+accounted for 64.1% of the total variance in student performance.
 
 ```{r factor_structure}
 
@@ -1111,15 +1146,493 @@ efa_results <- fa(scaled_scores_na,
                   nfactors = 2, rotate = "oblimin")
 
 # 3. Look at the loadings
-print(efa_results$loadings, cutoff = 0)
+# print(efa_results$loadings, cutoff = 0)
+
+# Publicationr ready table
+
+library(dplyr)
+library(kableExtra)
+library(stringr)
+
+# 1. Create the data frame from your output
+efa_table_data <- data.frame(
+  Measure = c("Word", "Phonics", "Phoneme", "Sentence", 
+              "Morphology", "Vocabulary", "TROG", "Inference"),
+  MR1 = c(0.815, 0.782, 0.704, 0.772, 0.910, 0.873, 0.680, 0.840),
+  MR2 = c(-0.153, 0.200, 0.207, -0.292, -0.012, -0.022, 0.249, -0.006)
+)
+
+# 2. Add the Variance/SS Loading rows at the bottom
+summary_rows <- data.frame(
+  Measure = c("SS Loadings (Eigenvalues)", "Proportion Variance", "Cumulative Variance"),
+  MR1 = c(5.125, 0.641, 0.641),
+  MR2 = c(0.254, 0.032, 0.672)
+)
+
+final_table <- bind_rows(efa_table_data, summary_rows)
+
+# 3. Create the HTML Table
+final_table %>%
+  kbl(caption = "Table 2. Exploratory Factor Analysis Loadings and Variance Explained",
+      col.names = c("Assessment Measure", "Factor 1 (General Reading)", "Factor 2"),
+      digits = 3,
+      align = "lcc") %>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  # Bold the significant loadings in Factor 1
+  column_spec(2, bold = ifelse(final_table$MR1 > 0.4, TRUE, FALSE)) %>%
+  # Add a line to separate measures from statistics
+  row_spec(8, extra_css = "border-bottom: 1px solid;") %>%
+  footnote(general = "Extraction Method: Minimum Residual. Rotation: Oblimin. Loadings > .40 are bolded. Factor 1 represents a unified General Reading Ability construct.")
+
 ```
 
-A second factor (MR2) failed to achieve statistical or substantive significance, explaining only 3.2% of additional variance with no variables loading above the .30 threshold. 
+A second factor (MR2) failed to achieve statistical or substantive
+significance, explaining only 3.2% of additional variance with no
+variables loading above the .30 threshold.
 
-While the earlier Parallel Analysis and Eigenvalues ($SS < 1.0$) confirm a unidimensional structure, the residual loadings in the non-significant second factor (MR2) provide an interesting diagnostic information we observed with the latent profile analysis with the full grades 2-5 sample. 
+While the earlier Parallel Analysis and Eigenvalues ($SS < 1.0$) confirm
+a unidimensional structure, the residual loadings in the non-significant
+second factor (MR2) provide an interesting diagnostic information we
+observed with the latent profile analysis with the full grades 2-5
+sample.
 
-Specifically, the variables that showed the most variance in the latent profile analysis—receptive grammar (TROG) and phonological decoding—showed a shared directional pull in MR2 ($loadings \approx .20$ to $.25$) that contrasted with sentence-level performance ($loading \approx -.29$).
+Specifically, the variables that showed the most variance in the latent
+profile analysis—receptive grammar (TROG) and phonological
+decoding—showed a shared directional pull in MR2 ($loadings \approx .20$
+to $.25$) that contrasted with sentence-level performance
+($loading \approx -.29$).
 
-This suggests that although reading ability is 64% unidimensional in this sample, the primary axis of 'divergence' for struggling readers involves a split between structural linguistic/phonological skills and contextual sentence processing. 
+This suggests that although reading ability is 64% unidimensional in
+this sample, the primary axis of 'divergence' for struggling readers
+involves a split between structural linguistic/phonological skills and
+contextual sentence processing.
 
-This provides the structural justification for our use of Model 2 (varying variances) in the LPA, as it allows the model to capture this specific pattern of divergence that the general factor otherwise obscures.
+This provides the structural justification for our use of Model 2
+(varying variances) in the LPA, as it allows the model to capture this
+specific pattern of divergence that the general factor otherwise
+obscures.
+
+### Within-person Centering
+
+**The Logic**: Currently, most profiles are "parallel" because the
+general reading ability accounts for 64% of the variance (as seen in
+the EFA results). By subtracting each student's personal average from their own
+scores, qw force every student to have a "personal mean of zero."
+
+**How it works**: A student who is high in everything looks the same as
+a student who is low in everything (both are flat lines at 0).
+
+**Benefit**: Only students with discrepancies (e.g., high phonics/low
+grammar) will show peaks and valleys. Effectively we are zooming on the zig zag lines (valleys and peaks within students).
+
+```{r ipsative_data_prep}
+
+# 1. Start with your standardized data
+# 2. Calculate a "Personal Mean" for each row and subtract it
+ipsative_data <- scaled_scores_na %>%
+  rowwise() %>%
+  mutate(personal_mean = mean(c_across(everything()))) %>%
+  mutate(across(everything() & -personal_mean, ~ . - personal_mean)) %>%
+  select(-personal_mean) %>%
+  ungroup()
+
+```
+
+
+```{r tidyLPA_mod_com_ipsative}
+
+library(tidyLPA)
+library(dplyr)
+library(kableExtra)
+
+# Note: In mclust terms: 
+# Model 1 = EEI (Equal variance, diagonal)
+# Model 2 = VVI (Varying variance, diagonal)
+
+# --- Run Model 1 (Equal Variance) ---
+mod1_results <- ipsative_data %>%
+  estimate_profiles(1:5, package = "mclust", 
+                    variances = "equal", 
+                    covariances = "zero") %>%
+  get_fit() %>%
+  mutate(Model_Type = "Model 1 (Equal Var)")
+
+# --- Run Model 2 (Varying Variance) ---
+mod2_results <- ipsative_data %>%
+  estimate_profiles(1:5, package = "mclust", 
+                    variances = "varying", 
+                    covariances = "zero") %>%
+  get_fit() %>%
+  mutate(Model_Type = "Model 2 (Varying Var)")
+
+
+# --- Combine into one Master Comparison Table ---
+all_comparisons <- bind_rows(mod1_results, mod2_results)
+
+all_comparisons_short <- all_comparisons %>%
+  select(Model_Type, Classes, n_parm = parameters,
+         BIC, Entropy, n_min, BLRT_p)
+
+# all_comparisons_short <- bind_rows(
+#   all_comparisons_short,
+#   vve_fit_row
+# )
+
+# --- Clean and Present ---
+all_comparisons_short %>%
+  mutate(across(c(BIC, Entropy, n_min), ~round(., 2))) %>%
+  arrange(Model_Type, Classes) %>% 
+  kbl(caption = "Table 1a. Sensitivity Analysis: Comparing Profile Solutions across Model Specifications (Z-Scores) with the Ipsative Data") %>%
+  kable_classic(full_width = F, html_font = "Arial") 
+# %>%
+#   # Highlight all 3-profile solutions to compare the 'Winner' across specifications
+#   row_spec(which(all_comparisons$Classes == 3), bold = T, background = "#f9f9f9")
+
+```
+<br><br>
+##### Five profiles from Model 2 (varying var) with Within-person Centered Data
+
+This plot displays mean relative scores (within-person centering), which removes global achievement levels to focus on the configural shape (relative strengths and weaknesses) of each student subgroup.
+
+Figure 7 shows that the 'Balanced Anchor' group (Class 3; 29.3%) exhibited no relative discrepancies with a relatively flat orange line. In contrast, the remaining 70% of the sample demonstrated notable zig-zag lines, indicating uneven component skill development. 
+
+Notably, the Green (Class 1) and Purple (Class 5) profiles revealed a distinct pattern of structural weaknesses.
+
+These students demonstrated a relative peak in sentence efficiency, indicating a preserved ability to quickly process and verify a simple sentence (e.g., "The sky is blue"). However, they exhibited disproportionate "valleys" in receptive grammar (TROG) and phonological decoding (Phonics). In the case of the Purple profile (5.7%), this gap was extreme, signifying a clear need for dual-focus support.
+
+This specific configuration suggests that while these learners have achieved a degree of functional automaticity for simple, familiar text, they lack the generative tools—specifically syntactic processing and phonological assembly—required to handle more complex or unfamiliar literacy tasks. 
+
+This finding highlights a critical instructional priority: students who appear efficient on basic sentence-level fluency measures may nonetheless possess significant underlying structural weaknesses that require integrated support across both linguistic and orthographic domains.
+
+```{r profile_plots_m2.c5_ipsative_data, fig.width=8, fig.height=5, fig.cap="**Figure 7. **Five Reading Mean Profile Plot with Within-person Centered Data (N = 1504)**"}
+
+# --- Run Model 2 5 Profiles
+# ---Get the Model Results ---
+mod2_fitted <- ipsative_data %>%
+  estimate_profiles(1:5, package = "mclust", 
+                    variances = "varying", covariances = "zero")
+
+# --- Extract the 5rd model in your mod2_fitted list ---
+model2_5class <- mod2_fitted[[5]] 
+
+# --- Prepare the Data ---
+plot_data_5 <- get_estimates(model2_5class) %>%
+  dplyr::filter(Category == "Means") %>%
+  mutate(Parameter = factor(Parameter, levels = order))
+
+# Calculate Percentages for the legend
+counts_5 <- table(get_data(model2_5class)$Class)
+pcts_5 <- round(prop.table(counts_5) * 100, 1)
+
+# Create the Plot
+
+m2c5.plot <- ggplot(plot_data_5, 
+       aes(x = Parameter, y = Estimate, 
+           group = factor(Class), color = factor(Class))) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  geom_errorbar(aes(ymin = Estimate - 1.96*se, ymax = Estimate + 1.96*se), 
+                width = 0.1, alpha = 0.3) +
+  scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
+  scale_color_manual(
+    # FIXED: Removed the trailing comma after 'orchid4'
+    values = c("1"="#2ca02c", "2"="#d62728", "3"="#ff7f0e", "4"="#1f77b4", "5"="orchid4"),
+    labels = paste0("Class ", names(pcts_5), " (", pcts_5, "%)")
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(y = "Mean Z-Score (Relative to each student's mean)",
+       x = "ROAR Measures",
+       subtitle = "using mean relative scores (de-meaned Z-scores)")
+
+m2c5.plot
+
+```
+
+### Filter by Intra-Individual Variance
+
+**The Logic**: Many students are "consistent"—their scores across the 8 tests are very similar. These students create those parallel "Level" profiles. So we first identify these "Consistent" students, set them aside, and then run the LPA only on the "Inconsistent" students.
+
+**How it works**: If a student's scores are all very close to each other, their variance will be low (variance < .25). If they have jagged scores, their variance will be high. We will analyze a subset of students who have score variance higher than 0.25. 
+
+Mathematically, an intra-individual variance of 0.25 corresponds to an average deviation of 0.50 standard deviations from a student’s own mean across the eight assessments. In the context of eight ROAR-measures, this 'scatter' may shed light on a substantive decoupling of foundation component and linguistic comprehension skills. 
+
+```{r filter_consistent_students}
+# 1. Calculate variance for each student across the 8 scores
+df_with_var <- scaled_scores_na %>%
+  rowwise() %>%
+  mutate(indiv_var = var(c_across(everything()))) %>%
+  ungroup()
+
+# library(summarytools)
+view(dfSummary(df_with_var))
+
+
+# 2. Split the sample
+consistent_students <- df_with_var %>% filter(indiv_var < 0.25)
+jagged_students <- df_with_var %>% filter(indiv_var >= 0.25)
+
+# 3. Report the 'Consistent' group descriptively (e.g., "70% of students show flat profiles")
+# Calculate stats for the Consistent group
+n_total <- nrow(df_with_var)
+n_consistent <- nrow(consistent_students)
+pct_consistent <- round((n_consistent / n_total) * 100, 1)
+
+# --- 1. Consistent Profiles Summary ---
+n_consistent <- nrow(consistent_students)
+pct_consistent <- round((n_consistent / n_total) * 100, 1)
+avg_level_consistent <- mean(rowMeans(consistent_students %>% select(all_of(order))))
+
+cat("Descriptive Summary of Consistent Profiles:\n",
+    "------------------------------------------\n",
+    "Total Sample N:", n_total, "\n",
+    "Consistent Students (Var < 0.25):", n_consistent, "(", pct_consistent, "% of sample)\n",
+    "Average Z-score (Global Level):", round(avg_level_consistent, 2), "\n\n")
+
+# --- 2. Jagged Profiles Summary ---
+# Calculate the specific N and % for the jagged group
+n_jagged <- nrow(jagged_students)
+pct_jagged <- round((n_jagged / n_total) * 100, 1)
+
+# Calculate the mean 'Global Ability' for the jagged group
+avg_level_jagged <- mean(rowMeans(jagged_students %>% select(all_of(order))))
+
+cat("Descriptive Summary of Jagged Profiles:\n",
+    "------------------------------------------\n",
+    "Total Sample N:", n_total, "\n",
+    "Jagged Students (Var >= 0.25):", n_jagged, "(", pct_jagged, "% of sample)\n",
+    "Average Z-score (Global Level):", round(avg_level_jagged, 2), "\n")
+
+```
+
+<br><br>
+#### Five profiles from Model 2 (varying var) with a Subset of Students with a Large Variance with the 8 ROAR scores
+
+While the within-person centered analysis (Figure 7) isolated relative skill configurations across the total sample, we conducted a follow-up LPA on the high-variance subsample ($n = 837$) to examine how these configurations manifest when absolute achievement levels are preserved (Figure 8).
+
+In Figure 8, we observe that for students in the proficient and average ranges (Classes 5, 4 and 2), skill configurations remain relatively stable despite meeting the threshold for high intra-individual variance. However, at the lower end of the achievement spectrum, the profiles become markedly non-parallel. 
+
+Specifically, the Dual-Focus Support group (Orange, Class 3, 8.7%) emerges as a distinct 'valley-shaped' profile, where receptive grammar and phonics gaps are disproportionately severe relative to their other skills. This demonstrates that non-parallel skill development is a hallmark of low performance in this sample: as the overall reading ability decreases, the imbalanced skill mastery pattern emerges. These students demonstrated relative preservation of sentence-level processing alongside profound, specific instructional needs in receptive grammar (Z ≈ -2.0) and phonological decoding (Z ≈ -1.8). 
+
+By isolating the 'jagged/inconsistent' students from those with balanced profiles, we demonstrate that the syntactic-phonological gap is not merely a rare exception, but a prominent pattern for students who may be struggling to co-develop linguistic and foundational skills for proficient reading.
+
+```{r profile_plots_m2.c5_jaggered, fig.width=8, fig.height=5, fig.cap="**Figure 8. **Reading Profiles Among Students with High Intra-Individual Skill Variance (Model 2, n = 837)**"}
+
+
+##### Five profiles from Model 2 (varying var) with Ipsative Data
+
+# --- Run Model 2 5 Profiles
+# ---Get the Model Results ---
+mod2_fitted <- jagged_students %>%
+  estimate_profiles(1:5, package = "mclust", 
+                    variances = "varying", covariances = "zero")
+
+# --- Extract the 5rd model in your mod2_fitted list ---
+model2_5class <- mod2_fitted[[5]] 
+
+# --- Prepare the Data ---
+plot_data_5_clean <- get_estimates(model2_5class) %>%
+  dplyr::filter(Category == "Means") %>%
+  # NEW: Keep only rows where Parameter is one of your 8 assessments
+  dplyr::filter(Parameter %in% order) %>% 
+  # NEW: Explicitly drop any "ghost" factor levels
+  mutate(Parameter = factor(Parameter, levels = order)) %>%
+  droplevels() 
+
+# Check the result
+# unique(plot_data_5_clean$Parameter) # no NA
+
+# Calculate Percentages for the legend
+class_counts <- table(get_data(model2_5class)$Class)
+pcts_5 <- round(prop.table(class_counts) * 100, 1)
+
+# Create the Plot
+
+m2c5.plot <- ggplot(plot_data_5_clean, 
+       aes(x = Parameter, y = Estimate, 
+           group = factor(Class), color = factor(Class))) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  geom_errorbar(aes(ymin = Estimate - 1.96*se, ymax = Estimate + 1.96*se), 
+                width = 0.1, alpha = 0.3) +
+  scale_x_discrete(labels = function(x) str_replace_all(x, "_theta|_score", "")) +
+  scale_color_manual(
+    # FIXED: Removed the trailing comma after 'orchid4'
+    values = c("1"="#2ca02c", "2"="#d62728", "3"="#ff7f0e", "4"="#1f77b4", "5"="orchid4"),
+    labels = paste0("Class ", names(pcts_5), " (", pcts_5, "%)")
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+        legend.position = "bottom",
+        legend.title = element_blank()) +
+  labs(y = "Mean Z-Score (relative to sample mean)",
+       x = "ROAR Measures",
+       subtitle = "using subset of learners exhibiting significant skill imbalance (variance > 0.25)")
+
+m2c5.plot
+
+```
+
+#### Note on Different Y-range in Figures 7 and 8
+
+The scales were purposefully allowed to vary to reflect the different nature of the data being visualized. Figure 7 employs a **zoom-in lens** approach to highlight configural shapes; using a wider normative scale would compress these qualitative trade-offs and render the diagnostic 'valleys' invisible. 
+
+Conversely, Figure 8 uses a **wide-angle lens** to illustrate how these qualitative shapes exist within the broader context of absolute achievement levels while focusing on those students with a large variance, indicating inconsistent levels of component skill mastery.
+
+Maintaining separate scales is essential to accurately represent the discrepancy between relative instructional needs and absolute performance goals.
+
+### Problem with Standardized Scores
+
+```{r plots1}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+
+# --- 1. Simulation ---
+set.seed(42)
+n <- 1000
+
+# The Master Ruler (DDA Scale)
+# Phonics: Low mean, very narrow spread
+# CVA: High mean, very wide spread
+phonics_dda <- rnorm(n, mean = -2.25, sd = 0.4) 
+cva_dda     <- rnorm(n, mean = 2.0,   sd = 1.8)
+
+df_dda <- data.frame(Phonics = phonics_dda, CVA = cva_dda)
+
+# 2. Derive Local Scales (Centered at 0, keeping natural SDs)
+df_local <- df_dda %>%
+  mutate(Phonics = Phonics - mean(Phonics),
+         CVA = CVA - mean(CVA))
+
+# 3. Derive Z-Scales (Centered at 0, SD forced to 1)
+df_z <- df_dda %>%
+  mutate(across(everything(), ~as.numeric(scale(.))))
+
+# --- Plotting ---
+p_setup <- function(data, title, xlab) {
+  ggplot(data %>% pivot_longer(everything()), aes(x = value, fill = name)) +
+    geom_density(alpha = 0.4, color = "white") +
+    scale_fill_manual(values = c("Phonics" = "#d62728", "CVA" = "#1f77b4")) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none", plot.title = element_text(face="bold")) +
+    labs(title = title, x = xlab, y = "Density")
+}
+
+p1 <- p_setup(df_local, "1. Local IRT Scales", "Ability relative to Task Mean (Logits)")
+p2 <- p_setup(df_z, "2. Standardized World (Z-Scores)", "Relative Rank (SD Units)")
+p3 <- p_setup(df_dda, "3. Aligned World (DDA)", "Shared Master Ruler (Logits)")
+
+(p1 / p2 / p3) + plot_layout(guides = "collect") & theme(legend.position = "bottom", legend.title = element_blank())
+```
+
+```{r plots2}
+# Creating a "Translation Plot" for Alpha and Delta
+trans_df <- data.frame(local_theta = seq(-3, 3, 0.1)) %>%
+  mutate(
+    # Aligned = (Alpha * Local) + Delta
+    # Phonics: Narrow (alpha 0.4), Hard/Low (delta -2.25)
+    Phonics_Aligned = (0.4 * local_theta) - 2.25,
+    # CVA: Wide (alpha 1.8), Easy/High (delta 2.0)
+    CVA_Aligned = (1.8 * local_theta) + 2.0
+  ) %>%
+  pivot_longer(-local_theta, names_to = "Task", values_to = "Master_Theta")
+
+ggplot(trans_df, aes(x = local_theta, y = Master_Theta, color = Task)) +
+  geom_line(linewidth = 2) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", alpha = 0.5) + # The Z-score assumption
+  scale_color_manual(values = c("CVA_Aligned" = "#1f77b4", "Phonics_Aligned" = "#d62728")) +
+  annotate("text", x = 1, y = 4.5, label = "CVA: Alpha = 1.8 (STRETCH)\nDelta = +2.0 (EASY)", color = "#1f77b4", fontface="bold") +
+  annotate("text", x = 1, y = -1.5, label = "Phonics: Alpha = 0.4 (SQUASH)\nDelta = -2.25 (HARD)", color = "#d62728", fontface="bold") +
+  theme_minimal() +
+  labs(title = "How DDA Rewrites the Ruler",
+       subtitle = "Dashed line = Z-score assumption (all tests are equal). \nColored lines = Real developmental exchange rates.",
+       x = "Score on the Local Test", y = "Value on the Master Reading Ruler")
+```
+
+```{r prob_z_scores_illustration}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+
+# --- 1. Simulation Parameters (From your ROAR table) ---
+set.seed(123)
+n <- 2000
+sd_phon <- 1.5  # Phonics SD from your table
+sd_cva  <- 2.0  # CVA SD from your table
+
+# --- 2. Defining the "Truth" ---
+# Student A: Has a 0.5 logit gap in the local scale.
+# Student B: Perfectly balanced in the local scale.
+students <- data.frame(
+  Name = c("Student A", "Student B"),
+  Ref_Phon = c(-1.5, 1.5), 
+  Ref_CVA  = c(-2.0, 1.5), # B is balanced at 1.5; A has a 0.5 difference
+  y_pos = c(0.05, 0.15)    # Staggered height
+) %>%
+  mutate(
+    # Panel 2: Standardized (Z-Scores)
+    # Student A: -1.5/1.5 = -1.0 | -2.0/2.0 = -1.0 (Gap deleted!)
+    # Student B: 1.5/1.5 = 1.0 | 1.5/2.0 = 0.75 (Fake gap created!)
+    Z_Phon = Ref_Phon / sd_phon, 
+    Z_CVA  = Ref_CVA / sd_cva,
+    
+    # Panel 3: DDA Aligned (Master Ruler)
+    # We apply the DDA logic: shift means based on absolute difficulty
+    # Phonics is foundational (Mean -1.5), CVA is advanced (Mean +1.5)
+    DDA_Phon = Ref_Phon - 1.5, 
+    DDA_CVA  = Ref_CVA + 1.5
+  )
+
+# --- 3. Plotting Helper ---
+clean_theme <- theme_minimal(base_size = 12) + 
+  theme(legend.title = element_blank(), # Removes 'Name' and 'name'
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 14))
+
+# PANEL 1: REFERENCE WORLD (Standard IRT)
+p1 <- ggplot() +
+  geom_density(data = data.frame(x = rnorm(n, 0, sd_phon)), aes(x, fill = "Phonics"), alpha = 0.3, color = NA) +
+  geom_density(data = data.frame(x = rnorm(n, 0, sd_cva)), aes(x, fill = "CVA"), alpha = 0.3, color = NA) +
+  geom_segment(data = students, aes(x = Ref_Phon, xend = Ref_CVA, y = y_pos, yend = y_pos, color = Name), linewidth = 1.5) +
+  geom_point(data = students %>% pivot_longer(cols = c(Ref_Phon, Ref_CVA)), aes(x = value, y = y_pos, color = Name), size = 4) +
+  scale_fill_manual(values = c("Phonics" = "#d62728", "CVA" = "#1f77b4")) +
+  scale_color_manual(values = c("Student A" = "orange", "Student B" = "purple")) +
+  labs(title = "1. Reference World (Local IRT)", 
+       subtitle = "Rulers differ in width (SD). Student B is balanced; Student A has a small gap.",
+       x = "Ability relative to Task Mean (Logits)", y = "Density") + clean_theme
+
+# PANEL 2: STANDARDIZED WORLD (The Statistical Distortion)
+p2 <- ggplot() +
+  geom_density(data = data.frame(x = rnorm(n, 0, 1)), aes(x, fill = "Phonics"), alpha = 0.3, color = NA) +
+  geom_density(data = data.frame(x = rnorm(n, 0, 1)), aes(x, fill = "CVA"), alpha = 0.3, color = NA) +
+  geom_segment(data = students, aes(x = Z_Phon, xend = Z_CVA, y = y_pos, yend = y_pos, color = Name), linewidth = 1.5) +
+  geom_point(data = students %>% pivot_longer(cols = c(Z_Phon, Z_CVA)), aes(x = value, y = y_pos, color = Name), size = 4) +
+  scale_fill_manual(values = c("Phonics" = "#d62728", "CVA" = "#1f77b4")) +
+  scale_color_manual(values = c("Student A" = "orange", "Student B" = "purple")) +
+  labs(title = "2. Standardized World (Z-Scores)", 
+       subtitle = "Math forces SD=1. Student A's gap is DELETED. Student B's gap is MANUFACTURED.",
+       x = "Relative Standing (SD Units)", y = "Density") + clean_theme
+
+# PANEL 3: ALIGNED WORLD (The DDA Solution)
+p3 <- ggplot() +
+  geom_density(data = data.frame(x = rnorm(n, -1.5, sd_phon)), aes(x, fill = "Phonics"), alpha = 0.3, color = NA) +
+  geom_density(data = data.frame(x = rnorm(n, 1.5, sd_cva)), aes(x, fill = "CVA"), alpha = 0.3, color = NA) +
+  geom_segment(data = students, aes(x = DDA_Phon, xend = DDA_CVA, y = y_pos, yend = y_pos, color = Name), linewidth = 1.5) +
+  geom_point(data = students %>% pivot_longer(cols = c(DDA_Phon, DDA_CVA)), aes(x = value, y = y_pos, color = Name), size = 4) +
+  scale_fill_manual(values = c("Phonics" = "#d62728", "CVA" = "#1f77b4")) +
+  scale_color_manual(values = c("Student A" = "orange", "Student B" = "purple")) +
+  labs(title = "3. Aligned World (Master Ruler via DDA)", 
+       subtitle = "Reflects true difficulty distance. Student A's gap is revealed; Student B remains proficient.",
+       x = "Shared Growth Scale (Logits)", y = "Density") + clean_theme
+
+# Final Layout
+(p1 / p2 / p3) + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+```
