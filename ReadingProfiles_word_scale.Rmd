@@ -1,0 +1,1102 @@
+---
+title: "Reading Profile Analysis"
+subtitle: "N = 1,504 (grades 2-5) with 7 ROAR measures (transformed)"
+author: "Yukie Toyama"
+date: "2026-04-26"
+output: 
+  html_document:
+    toc: yes
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+##  {.tabset}
+
+### Intro
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,    # hide code
+  message = FALSE, # hide messages
+  warning = FALSE  # hide warnings
+)
+
+library(mclust)
+library(tidyverse)
+library(dplyr)
+library(corrplot)
+```
+
+We conducted latent profile analysis, using seven ROAR measures all
+tranformed into the ROAR-Word scale in logits. Initial dataset includes
+2,224 students in grades 2-8. We subsetted it to include a total of
+1,504 students in **grades 2-5** who completed all seven ROAR-measures.
+
+For this analysis **ROAR-sentence** is dropped as it is on its own scale. All the remaining seven ROAR measures are transformed onto the ROAR-Word logit scale. We used this scale (rather than the z-score scale) in the LPA analysis. 
+
+```{r write-out-anonymized-data}
+# Load in raw data and write out a simplified and totally de-identified data frame
+# Note using updated datafile from Youngsun (sent via email 04-24-26)
+df <- read_csv("data/reading_profile_data_deidentified_demo_2026-04-24.csv")
+
+# library(summarytools)
+# view(dfSummary(df))
+# view(dfSummary(df.mclust))
+
+
+# pick transformed vars
+varnames <- c("word_theta", "phonics_theta_trans" ,"phoneme_theta_trans", "morphology_theta_trans", "cva_theta_trans", "trog_theta_trans", "inference_theta_trans", "sentence_score", "age_months_at_run", "user_grade_at_run") 
+
+# pick original vars
+var_original <- c("word_theta", "phonics_theta" ,"phoneme_theta", "morphology_theta", "cva_theta", "trog_theta", "inference_theta", "sentence_score", "age_months_at_run", "user_grade_at_run") 
+
+# create transformed df
+roar_df <- df %>% select(all_of(varnames)) %>%
+  round(digits=2)
+roar_df$id <- factor(df$id)
+roar_df <- roar_df %>% 
+  select(id, everything())
+
+# create demograph df
+demo_df <- df %>% 
+  mutate(id = factor(id),
+         low_ses = ifelse(socioeconomic_disadvantage == 1, "yes", "no")) %>%  
+  select(id,
+         grade = user_grade_at_run,
+         gender, 
+         race.ethnicity = race_cleaned,
+         low_ses,
+         ell_status, iep_status,
+         home_language) 
+```
+
+### Samples
+
+```{r demography}
+# demographic table (all grades)
+library(gtsummary)
+demo_df %>%  
+  select(-id) %>% 
+  tbl_summary(missing_text = "(Missing)") %>% 
+   bold_labels() %>% 
+  modify_caption("**Table. Student Demographics (all students)**")
+
+# demographic table (grades 2-5)
+demo_df %>%  
+  select(-id) %>% 
+  filter(grade < 6) %>% 
+  tbl_summary(missing_text = "(Missing)") %>% 
+   bold_labels() %>% 
+  modify_caption("**Table. Student Demographics (grades 2-5)**")
+```
+
+```{r data-prep}
+# create a new matrix with the variables used for clustering and removing any row with 
+# an NAN and filtering to grades 2-5
+df.mclust8 <- 
+  filter(df, user_grade_at_run>=2) %>%
+  filter(user_grade_at_run<=5) %>%
+  select(varnames[1:8]) 
+
+df.mclust8_orig <- 
+  filter(df, user_grade_at_run>=2) %>%
+  filter(user_grade_at_run<=5) %>%
+  select(var_original[1:8]) 
+
+df.mclust7 <- 
+  filter(df, user_grade_at_run>=2) %>%
+  filter(user_grade_at_run<=5) %>%
+  select(varnames[1:7]) 
+
+
+# zscore grades 2-5 df with 8 measures including sentence
+# because sentence is on a different scale, standardize
+# scaling data: all ROAR scores on the z-score scale
+scaled_scores_na <- df.mclust8 %>% 
+  mutate(across(everything(), ~as.numeric(scale(.))))
+
+scaled_scores_na_orig <- df.mclust8_orig %>% 
+  mutate(across(everything(), ~as.numeric(scale(.))))
+```
+
+### Correlation
+
+Figure 1 shows a correlation matrix among the eight ROAR measures.
+
+```{r corr_mat, fig.cap="**Figure 1.** *Correlations among eight ROAR measures (N = 1504)*"}
+# compute correlation matrix and visualize
+c = cor(scaled_scores_na)
+corrplot(c, 
+         method = 'circle', 
+         type = 'lower',    # To show lower half only
+         order = 'hclust',  # Keeps the hierarchical clustering order
+         addCoef.col = "black", 
+         diag = FALSE,          # to hide the diagonal
+         number.cex = 0.6, 
+         number.digits = 2)
+```
+
+```{r corr_mat_tbl7}
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(psych) # Useful for getting the formatted correlation matrix
+
+# 1. Define the expert order and clean names for the table
+expert_order <- c("inference_theta_trans", "morphology_theta_trans",
+                  "cva_theta_trans", "trog_theta_trans",
+                  "sentence_score", "word_theta", 
+                  "phonics_theta_trans", "phoneme_theta_trans")
+
+clean_labels <- c("1. Inference", "2. Morphology", "3. Vocabulary (CVA)", 
+                 "4. Grammar (TROG)", "5. Sentence", 
+                 "6. Word Reading", "7. Phonics", "8. Phonemes")
+
+# 2. Extract stats: Means and SDs 
+# Assuming df.mclust_na contains the original scores
+descriptives <- df.mclust8 %>%
+  select(all_of(expert_order)) %>%
+  summarise(across(everything(), 
+                   list(M = ~mean(., na.rm=T), 
+                        SD = ~sd(., na.rm=T)))) %>%
+  pivot_longer(everything(), 
+               names_to = c("Variable", ".value"), 
+               names_pattern = "(.*)_(.*)") %>%
+  mutate(Variable = 
+           factor(Variable, levels = expert_order)) %>%
+  arrange(Variable)
+
+# 3. Create the correlation matrix (Lower Triangle)
+cor_mat <- cor(scaled_scores_na[, expert_order])
+cor_mat[upper.tri(cor_mat, diag = TRUE)] <- NA # Clean upper triangle
+
+# 4. Combine into final table format
+apa_table_display <- as.data.frame(cor_mat) %>%
+  mutate(across(everything(), ~sprintf("%.2f", .))) %>% 
+  mutate(across(everything(), ~replace(., . == "NA", ""))) %>%
+  mutate(Variable = clean_labels,
+         M = round(descriptives$M, 2),
+         SD = round(descriptives$SD, 2)) %>%
+  select(Variable, M, SD, everything()) %>% 
+  # Drop the last empty correlation column
+  select(1:(ncol(.)-1))
+
+# 3. Generate the clean, professional APA table
+apa_table_display %>%
+  kbl(caption = "Table 2. Descriptive Statistics and Intercorrelations Among ROAR Measures",
+      col.names = c("Measure", "M", "SD", 1:7),
+      align = "lrrccccccc",
+      # --- THE CRITICAL FIX ---
+      row.names = FALSE) %>% 
+  kable_classic(full_width = F, html_font = "Times New Roman") %>%
+  add_indent(c(1:8)) %>%
+  footnote(general = "N = 1,504. Correlations are based on standardized scores. 0.00 indicates the sample average for theta estimates.")
+
+# 5. Generate professional HTML table
+# apa_table_df %>%
+#   kbl(caption = "Table 1. Descriptive Statistics and Intercorrelations Among ROAR Measures",
+#       col.names = c("Assessment Measure", "M", "SD", 1:8),
+#       align = "lrrcccccccc") %>%
+#   kable_classic(full_width = F, html_font = "Times New Roman") %>%
+#   footnote(general = "N = 1,504. Correlations are based on standardized scores, while M and SD are on the ROAR-Word logit scale except for the Sentence measure.")
+```
+
+```{r corr_mat_tbl8_original}
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(psych) # Useful for getting the formatted correlation matrix
+
+# 1. Define the expert order and clean names for the table
+expert_order0 <- c("inference_theta", "morphology_theta",
+                  "cva_theta", "trog_theta",
+                  "sentence_score", "word_theta", 
+                  "phonics_theta", "phoneme_theta")
+
+# 2. Extract stats: Means and SDs 
+# Assuming df.mclust_na contains the original scores
+descriptives0 <- df.mclust8_orig %>%
+  select(all_of(expert_order0)) %>%
+  summarise(across(everything(), 
+                   list(M = ~mean(., na.rm=T), 
+                        SD = ~sd(., na.rm=T)))) %>%
+  pivot_longer(everything(), 
+               names_to = c("Variable", ".value"), 
+               names_pattern = "(.*)_(.*)") %>%
+  mutate(Variable = 
+           factor(Variable, levels = expert_order0)) %>%
+  arrange(Variable)
+
+# 3. Create the correlation matrix (Lower Triangle)
+cor_mat0 <- cor(scaled_scores_na_orig[, expert_order0])
+cor_mat0[upper.tri(cor_mat0, diag = TRUE)] <- NA # Clean upper triangle
+
+# 4. Combine into final table format
+apa_table_display0 <- as.data.frame(cor_mat0) %>%
+  mutate(across(everything(), ~sprintf("%.2f", .))) %>% 
+  mutate(across(everything(), ~replace(., . == "NA", ""))) %>%
+  mutate(Variable = clean_labels,
+         M = round(descriptives0$M, 2),
+         SD = round(descriptives0$SD, 2)) %>%
+  select(Variable, M, SD, everything()) %>% 
+  # Drop the last empty correlation column
+  select(1:(ncol(.)-1))
+
+# 3. Generate the clean, professional APA table
+apa_table_display0 %>%
+  kbl(caption = "Table 2a. Descriptive Statistics and Intercorrelations Among ROAR Measures (original scale)",
+      col.names = c("Measure", "M", "SD", 1:7),
+      align = "lrrccccccc",
+      # --- THE CRITICAL FIX ---
+      row.names = FALSE) %>% 
+  kable_classic(full_width = F, html_font = "Times New Roman") %>%
+  add_indent(c(1:8)) %>%
+  footnote(general = "N = 1,504. Correlations are based on standardized scores. 0.00 indicates the sample average for theta estimates.")
+
+# 5. Generate professional HTML table
+# apa_table_df %>%
+#   kbl(caption = "Table 1. Descriptive Statistics and Intercorrelations Among ROAR Measures",
+#       col.names = c("Assessment Measure", "M", "SD", 1:8),
+#       align = "lrrcccccccc") %>%
+#   kable_classic(full_width = F, html_font = "Times New Roman") %>%
+#   footnote(general = "N = 1,504. Correlations are based on standardized scores, while M and SD are on the ROAR-Word logit scale except for the Sentence measure.")
+```
+
+### Latent Profile Analysis
+
+```{r lpa-model-1, echo=FALSE}
+# Following these instructions for latent profile analysis https://willhipson.netlify.app/post/latent-profile/latent-profile/ 
+
+# consider tidyLPA instead https://cran.r-project.org/web/packages/tidyLPA/vignettes/Introduction_to_tidyLPA.html
+
+# getting and plotting Bayesian Information Criteria 
+
+BIC <- mclustBIC(df.mclust7)
+```
+
+#### Exploratory Model Selection (mclust)
+
+We sought to identify optimal student subgroups by conducting a Latent
+Profile Analysis (LPA) using the Mclust function within the *mclust*
+package in R. This package utilizes a Gaussian Mixture Modeling
+framework to identify unobserved (latent) groups within the data. 
+
+```{r bic-plot, fig.cap="**Figure 2.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
+plot(BIC)
+```
+
+```{r bic-summary}
+# 1. Grab the top row of the summary table
+summary(BIC)
+bic_summary <- summary(BIC) %>% as.data.frame()
+
+# 2. Extract the model name and number of profiles (e.g., "VVE" and 4)
+# The rownames of the summary hold the label "VVE,4"
+winning_label <- rownames(bic_summary)[1] 
+
+# 3. Extract the actual BIC value (least negative)
+# We use max() because mclust BIC values are negative (higher is better)
+best_bic_val <- max(bic_summary$x, na.rm = TRUE)
+```
+
+A comparison of fit indices (see below) revealed that the VVE
+**(Variable volume, Variable shape, Equal orientation)** model structure
+consistently outperformed other specifications. The absolute best statistical fit was achieved by the `r winning_label` model, which yielded a BIC of `r format(round(best_bic_val, 2), big.mark=",")`. 
+
+**Validation via Integrated Completed Likelihood (ICL)**
+
+```{r icl}
+# double check we chose the best model by looking at Integrated Completed Likelihood 
+ICL <- mclustICL(df.mclust7)
+```
+
+```{r icl_plot, fig.cap="**Figure 3.** *BIC Model Selection Plot. Higher values indicate better fit. The 3-profile VVE model (purple line) was selected as the optimal balance of fit and parsimony.*"}
+plot(ICL)
+```
+
+```{r icl_sum}
+summary(ICL)
+icl_summary <- summary(ICL) %>% as.data.frame()
+
+# 2. Extract the model name and number of profiles (e.g., "VVE" and 4)
+# The rownames of the summary hold the label "VVE,4"
+winning_icl <- rownames(icl_summary)[1] 
+
+# 3. Extract the actual BIC value (least negative)
+# We use max() because mclust BIC values are negative (higher is better)
+best_icl_val <- max(icl_summary$x, na.rm = TRUE)
+```
+
+To further validate the number of profiles, we examined the Integrated Completed Likelihood (ICL). While BIC can sometimes favor more complex models, ICL includes an additional penalty for "classification entropy" (how clearly students are assigned to a single group).
+
+As shown in the ICL Model Selection Plot (Figure 3), fit indices for may of the top-performing model structures reached a distinct peak at the 3- or 4-profile solution.
+
+The absolute best statistical fit according to ICL was achieved by the `r winning_icl` model, which yielded a ICL of `r format(round(best_icl_val, 2), big.mark=",")`. 
+
+### Model Fits
+```{r mod_fits}
+# # Function to calculate Entropy
+# calc_entropy <- function(m) {
+#   if (is.null(m$z)) return(NA)
+#   n <- nrow(m$z); k <- ncol(m$z)
+#   return(1 + (sum(m$z * log(m$z + 1e-10)) / (n * log(k))))
+# }
+# 
+# # Function to calculate Average Posterior Probability (AvePP)
+# calc_avePP <- function(m) {
+#   if (is.null(m$z)) return(NA)
+#   return(mean(apply(m$z, 1, max)))
+# }
+# 
+# # Function to calculate CAIC (Consistent AIC)
+# calc_caic <- function(m) {
+#   # Formula: -2*loglik + n_parm*(log(N) + 1)
+#   return(-2 * m$loglik + m$df * (log(m$n) + 1))
+# }
+# 
+# 
+# 
+# models_to_run <- c("EEI", "VVI", "VVE", "VVV")
+# G_range <- 1:5
+# results_list <- list()
+# 
+# for (m_name in models_to_run) {
+#   for (g in G_range) {
+#     # Run the model
+#     fit <- Mclust(df.mclust7, G = g, modelNames = m_name, verbose = FALSE)
+#     
+#     # Run BLRT (Slow step - set nsub lower for testing, 100+ for final)
+#     # BLRT compares G vs G-1. For G=1, it is NA.
+#     p_val <- NA
+#     if (g > 1) {
+#       # Use try() to prevent the loop from crashing if a model fails
+#       blrt <- try(mclustBootstrapLRT(df.mclust7, modelName = m_name, maxG = g, nsub = 50), silent = TRUE)
+#       if (!inherits(blrt, "try-error")) {
+#         # We grab the p-value for the specific jump to 'g'
+#         p_val <- blrt$p[g-1]
+#       }
+#     }
+#     
+#     # Store stats
+#     results_list[[paste0(m_name, g)]] <- data.frame(
+#       Model = m_name,
+#       Profiles = g,
+#       BIC = fit$bic,
+#       CAIC = calc_caic(fit),
+#       Entropy = calc_entropy(fit),
+#       AvePP = calc_avePP(fit),
+#       Min_Pct = min(prop.table(table(fit$classification))) * 100,
+#       BLRT_p = p_val
+#     )
+#   }
+# }
+# 
+# # Combine all results into one dataframe
+# all_fits <- bind_rows(results_list)
+# 
+# 
+# 
+# ## html table
+# library(kableExtra)
+# # 1. Prepare the display data
+# html_table_data <- all_fits %>%
+#   # Select key columns
+#   select(Model, Profiles, BIC, CAIC, Entropy, AvePP, Min_Pct, BLRT_p) %>%
+#   mutate(across(where(is.numeric), ~round(., 2))) %>%
+#   # Make the percentage look nice
+#   mutate(Min_Pct = paste0(Min_Pct, "%"))
+# 
+# # 2. Render the table without row names
+# html_table_data %>%
+#   kbl(caption = "Table 3. Model Fit Comparison across Specifications (Aligned Logits)",
+#       col.names = c("Structure", "Profiles", "BIC", "CAIC", "Entropy", "AvePP", "Min Class %", "BLRT (p)"),
+#       align = "llcccccc",
+#       row.names = FALSE) %>% 
+#    kable_classic(full_width = F, html_font = "Arial") %>%
+#   # Highlight the VVV, 3 row
+#   row_spec(which(html_table_data$Model == "VVV" & html_table_data$Profiles == 3), 
+#            bold = T, background = "#D4EDDA") %>% 
+#   kableExtra::footnote(general = "BIC: Bayesian Information Criterion; CAIC: Consistent AIC; AvePP: Average Posterior Probability; BLRT: Bootstrap Likelihood Ratio Test. BLRT p-values were not computed for diagonal models (EEI, VVI) as these specifications served only as parsimonious baselines and exhibited significantly inferior fit compared to ellipsoidal structures")
+# 
+# # Save the fit table to word
+# library(flextable)
+# library(officer)
+# 
+# # 1. Clean the data for export
+# table_for_word <- all_fits %>%
+#   # Select only the columns we want to show
+#   select(Model, Profiles, BIC, CAIC, Entropy, AvePP, Min_Pct, BLRT_p) %>%
+#   # Round the numbers to 2 decimal places
+#   mutate(across(where(is.numeric), ~round(., 2))) %>%
+#   # Convert n_min to a percentage string for better readability
+#   mutate(Min_Pct = paste0(Min_Pct, "%"))
+# 
+# # 2. Create the Flextable
+# ft <- flextable(table_for_word) %>%
+#   set_caption(caption = "Table 2. Model Fit Comparison across Specifications (Aligned Logits)") %>%
+#   # Set professional fonts and alignment
+#   font(fontname = "Times New Roman", part = "all") %>%
+#   fontsize(size = 10, part = "all") %>%
+#   align(align = "center", part = "all") %>%
+#   align(j = 1, align = "left", part = "all") %>% # Left align the first column
+#   autofit() %>%
+#   # Add horizontal borders (APA Style)
+#   border_remove() %>%
+#   hline_top(border = fp_border(width = 2), part = "header") %>%
+#   hline_bottom(border = fp_border(width = 1), part = "header") %>%
+#   hline_bottom(border = fp_border(width = 2), part = "body") %>%
+#   # Highlight the winner (VVV, 3) - assuming it's row 13 in your object
+#   bg(i = ~ Model == "VVV" & Profiles == 3, bg = "#F2F2F2", part = "body") %>%
+#   bold(i = ~ Model == "VVV" & Profiles == 3, part = "body")
+
+# 3. Export directly to a Word file
+# save_as_docx(ft, path = "output/LPA_Fit_Table.docx")
+
+```
+
+```{r fit-table-fig, echo=FALSE, fig.align='center', out.width='95%'}
+# You do NOT need a read command. 
+# Just provide the filename in quotes.
+knitr::include_graphics("output/LPA_Fit_Table_alighed_scale_results_grades2_5.png")
+```
+
+
+### VVE:3-profiles
+
+The **VVE (Variable volume, Variable shape, Equal orientation)** model allows each profile to have a different number of students (i.e., variable volume) as well as a different variance (i.e., variable shape) while it assumes the seven ROAR measures to correlate and these correlations are invariant across the profiles (i.e., equal orientation).
+
+```{r vve_3_profiles}
+#choosing VVE, 3 which is a top model based on BIC
+mod_vve3 <- Mclust(df.mclust7, modelNames = "VVE", G = 3)
+#summary(mod_vve3)
+
+# Class counts
+counts <- table(mod_vve3$classification)
+
+# Calculate percentages from the classification results
+class_proportions <- prop.table(table(mod_vve3$classification)) * 100
+class_proportions <- round(class_proportions, 1) # Round to 1 decimal
+
+# Display them to check
+# print(class_proportions)
+
+# Create the specific labels
+# Note: Ensure the Class numbers match your specific plot lines
+# Recalculate labels with the "X" prefix to match the dataframe
+labels_new <- c(
+  "X1" = paste0("Class 1 (", class_proportions["1"], "%)"),
+  "X3" = paste0("Class 2 (", class_proportions["3"], "%)"),
+  "X2" = paste0("Class 3 (esp. Grammar & Phonics) (", class_proportions["2"], "%)")
+)
+
+# final check Boostrap Likelihood Ratio Test (BLRT) -- takes a long time to run do not run unless necessary 
+#mclustBootstrapLRT(scores_na, modelName = "VVV")
+```
+The 3-profile VVE model successfully categorized the `r format(mod_vve3$n, big.mark=",")` students into distinct subgroups. The largest subgroup (Profile 3, $n =$ `r counts["3"]`) represented `r class_proportions["3"]`% of the sample, followed by Profile 1 ($n =$ `r counts["1"]`, `r class_proportions["1"]`%). A smaller, distinct subgroup was also identified (Profile 2, $n =$ `r counts["2"]`, `r class_proportions["2"]`%), representing a specialized pattern of reading development. The high ICL value (`r format(round(mod_vve3$icl, 2), big.mark=",")`) confirms that these three groups are well-separated with high classification
+certainty.
+
+
+```{r visualize-lpa, echo=FALSE, warning=FALSE}
+
+# Define the new expert-driven order
+order <- c("inference_theta_trans", "morphology_theta_trans", "cva_theta_trans",
+           "trog_theta_trans", "word_theta", 
+           "phonics_theta_trans", "phoneme_theta_trans")
+
+# Update the means dataframe
+means <- data.frame(mod_vve3$parameters$mean) %>%
+  rownames_to_column() %>%
+  rename(Scores = rowname) %>%
+  pivot_longer(cols = c(X1, X2, X3), names_to = "Profile", values_to = "Mean") %>%
+  mutate(Mean = round(Mean, 2)) %>%
+  # --- This is the critical line: re-leveling the factor ---
+  mutate(Scores = factor(Scores, levels = order))
+```
+
+Figure 3 shows the strength and weakness of the three latent profiles on
+the seven ROAR-measures.
+
+```{r profile_plot_vve3, fig.width=10, fig.height=5, fig.cap="**Figure 3.** *Three-Latent Profiles of Reading and Language Skills (VVE). Scores are transformed onto the ROAR-Word logit scale*"}
+library(stringr)
+
+vve.c3 <- ggplot(means, aes(x=Scores, y=Mean, group = Profile, color = Profile)) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  
+  # CLEAN X-AXIS
+  scale_x_discrete(labels = function(x) stringr::str_replace_all(x, "_trans|_theta", "")) +
+  
+  # THE FIX: Add "X" to the keys here
+  scale_color_manual(
+    values = c("X1" = "#2ca02c", "X3" = "#ff7f0e", "X2" = "#d62728"), 
+    breaks = c("X1", "X3", "X2"), 
+    labels = labels_new
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) +
+  labs(
+    y = "logit (ROAR-Word)",
+    x = "ROAR Measures"
+  )
+
+vve.c3.titles <- vve.c3 + 
+  labs(
+    title = "VVE: 3-Profile Solution",
+  ) +
+  guides(color = guide_legend(ncol = 1))
+
+
+vve.c3.titles
+
+```
+
+**Profile 1 (Green): "The Proficient Readers" (\~43% of sample)**
+
+The Pattern: A relatively flat line among inference, morphology and
+vocabulary (CVA), while grammar (trog) creating a valley and word
+creating a hill; the means for the 3 foundational skills (word, phonics,
+and phoneme) are all higher than those of the comp measures (inference,
+morphology, cva and trog).
+
+**Profile 3 (Orange): "The Average Readers" (\~49% of sample)**
+
+The Pattern: A relatively flat line with phoneme being the lowest,
+followed by inference.
+
+**Profile 2 (Rd): "The Struggling Readers (esp. Grammar & Phonics" (\~8% of sample)**
+
+The Pattern: All lower than the other two profiles with distinct valleys
+with trog and phonics, indicating these students struggle mostly with
+receptive grammar and decoding. Interesting to note that these students' relative strenght in Word reading and language comprehension
+skills, compared to trog, phonics, and phoneme, and these three measures involve listening to audio. 
+
+```{mclust_other_mods}
+# --- 1. Extract the two contenders ---
+mod_vve4 <- Mclust(df.mclust7, G = 4, modelNames = "VVE")
+mod_vvv3 <- Mclust(df.mclust7, G = 3, modelNames = "VVV")
+mod_vvv4 <- Mclust(df.mclust7, G = 4, modelNames = "VVV")
+
+# --- 2. Compare Log-Likelihood and Entropy ---
+# Use the function we discussed earlier to calculate entropy for both
+# Higher entropy (>0.80) is the goal
+calc_entropy <- function(m) {
+  n <- nrow(m$z); k <- ncol(m$z)
+  return(1 + (sum(m$z * log(m$z + 1e-10)) / (n * log(k))))
+}
+
+# cat("VVE,3 Entropy:", calc_entropy(mod_vve3), "\n")
+# cat("VVE,4 Entropy:", calc_entropy(mod_vve4), "\n")
+# cat("VVV,3 Entropy:", calc_entropy(mod_vvv3), "\n")
+# cat("VVV,4 Entropy:", calc_entropy(mod_vvv4), "\n")
+
+```
+
+```{r profile_plot_func}
+plot_roar_profiles <- function(mclust_model, 
+                               var_order, 
+                               class_labels_map, 
+                               class_colors, # NEW: User-defined color vector
+                               title = "LPA Profile Plot",
+                               subtitle = "") {
+  
+  library(tidyverse)
+  library(stringr)
+
+  # 1. Calculate class percentages from the model
+  counts <- table(mclust_model$classification)
+  proportions <- round(prop.table(counts) * 100, 1)
+  
+  # 2. Extract means and reshape
+  means_df <- as.data.frame(mclust_model$parameters$mean) %>%
+    rownames_to_column(var = "Scores") %>%
+    pivot_longer(
+      cols = starts_with("V"),
+      names_to = "Profile",
+      values_to = "Mean"
+    ) %>%
+    mutate(
+      Mean = round(Mean, 2),
+      Scores = factor(Scores, levels = var_order),
+      # Ensure Profile matches the "X1" format used in your mapping
+      Profile = str_replace(Profile, "V", "X")
+    )
+
+  # 3. Create dynamic labels (Name + %)
+  # This matches the names in class_labels_map to the calculated proportions
+  final_labels <- sapply(names(class_labels_map), function(x) {
+    class_num <- str_replace(x, "X", "")
+    paste0(class_labels_map[x], " (", proportions[class_num], "%)")
+  })
+
+  # 4. Build Plot
+  ggplot(means_df, aes(x = Scores, y = Mean, group = Profile, color = Profile)) +
+    geom_point(size = 3) +
+    geom_line(linewidth = 1.2) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    scale_x_discrete(labels = function(x) str_replace_all(x, "_trans|_theta", "")) +
+    
+    # USE USER-DEFINED COLORS AND LABELS
+    scale_color_manual(
+      values = class_colors,      # Directly use your color vector
+      breaks = names(class_labels_map), # Force legend order
+      labels = final_labels       # Use the name + % labels
+    ) +
+    
+    theme_minimal(base_size = 13) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+      legend.position = "bottom",
+      legend.title = element_blank()
+    ) +
+    labs(title = title, subtitle = subtitle, y = "logit (ROAR-Word)", x = "ROAR Measures")
+}
+```
+
+### VVE:4-profiles
+
+The **VVE (Variable volume, Variable shape, Equal orientation)** model allows each profile to have a different number of students (i.e., variable volume) as well as a different variance (i.e., variable shape) while it assumes the seven ROAR measures to correlate and these correlations are invariant across the profiles (i.e., equal orientation).
+
+Figure 4 shows the strength and weakness of the three latent profiles on
+the seven ROAR-measures.
+
+```{r profile_plot_vve4, fig.width=10, fig.height=5, fig.cap="**Figure 4.** *Four-Latent Profiles of Reading and Language Skills (VVE). Scores are transformed onto the ROAR-Word logit scale (N = 1504)*"}
+
+# 1. Define labels in the actual visual order (Top to Bottom)
+labels_4 <- c(
+  "X1" = "Proficient",
+  "X3" = "Above Average", # Swapped: X3 is the 2nd highest line
+  "X4" = "Developing",    # Swapped: X4 is the 3rd highest line
+  "X2" = "Struggling (Dual-Focus)"
+)
+
+# 2. Define colors to match these visual positions
+colors_4 <- c(
+  "X1" = "#2ca02c", # Green (Top)
+  "X3" = "#377eb8", # Blue (2nd)
+  "X4" = "#ff7f0e", # Orange (3rd)
+  "X2" = "#d62728"  # Red (Bottom)
+)
+
+
+# 3. Call your function (assuming you updated the internal function to handle Blue)
+mod_vve4 <- Mclust(df.mclust7, G = 4, modelNames = "VVE")
+vve4_plot <- 
+  plot_roar_profiles(
+  mod_vve4, 
+  order, 
+  labels_4,
+  colors_4,
+  title = "VVE: 4-Profile Solution")
+
+vve4_plot
+```
+
+### VVV:3-profiles
+
+Unlike the VVE model, the **VVV (Variable volume, Variable shape, Variable orientation)** model allows pairwise correlations among the seven ROAR measures to be different across the profiles (i.e., variable orientation).
+
+```{r vvv3_plot}
+#Define your 3 colors
+colors_3 <- c("X1" = "#2ca02c",
+              "X3" = "#ff7f0e",
+              "X2" = "#d62728")
+
+# Define your 3 labels
+labels_3 <- c("X1" = "Proficient",
+              "X3" = "Developing",
+              "X2" = "Struggling")
+
+
+mod_vvv3 <- Mclust(df.mclust7, G = 3, modelNames = "VVV")
+
+# Run the function!
+vvv3_plot <- plot_roar_profiles(mod_vvv3, 
+                                order, 
+                                labels_3, 
+                                colors_3, 
+                                title = "VVV: 3-Profile Solution")
+vvv3_plot
+```
+
+### VVV:4-profiles
+
+Unlike the VVE model, the **VVV (Variable volume, Variable shape, Variable orientation)** model allows pairwise correlations among the seven ROAR measures to be different across the profiles (i.e., variable orientation).
+
+```{r vve4_mean_plot}
+
+# # 1. Define labels in the actual visual order (Top to Bottom)
+labels_4 <- c(
+  "X1" = "Proficient",
+  "X3" = "Above Average", # Swapped: X3 is the 2nd highest line
+  "X4" = "Developing",    # Swapped: X4 is the 3rd highest line
+  "X2" = "Struggling (Dual-Focus)"
+)
+
+# # 2. Define colors to match these visual positions
+colors_4 <- c(
+  "X1" = "#2ca02c", # Green (Top)
+  "X3" = "#377eb8", # Blue (2nd)
+  "X4" = "#ff7f0e", # Orange (3rd)
+  "X2" = "#d62728"  # Red (Bottom)
+)
+
+
+# 3. Call your function (assuming you updated the internal function to handle Blue)
+mod_vvv4 <- Mclust(df.mclust7, G = 4, modelNames = "VVV")
+vvv4_plot <- 
+  plot_roar_profiles(
+  mod_vvv4, 
+  order, 
+  labels_4,
+  colors_4,
+  title = "VVV: 4-Profile Solution")
+
+vve4_plot
+```
+
+
+
+### Multi-group LPA
+
+We conducted the multigroup Latent Profile Analysis (MGLPA) to examine
+whether the four-profile structure is invarianet between two grade-bands:
+grades 2-3 and grades 4-5. The MGLPA results are summarized in Table 4.
+The 3-profile solution from the VVV model demonstrated robust statistical fit and high
+classification clarity (Entropy = 0.83). The Bootstrap Likelihood Ratio
+Test ($p < .01$) confirmed that the 5-profile structure significantly
+outperformed the 2-profile model. Notably, the smallest identified
+subgroup represented 8.7% of the total sample, ensuring sufficient group
+stability for comparing developmental patterns across grade-bands.
+
+```{r data_prep_multi}
+# Create the two developmental groups
+df.groups <- df %>%
+  filter(user_grade_at_run < 6) %>% 
+  mutate(grade_group = ifelse(user_grade_at_run <= 3, 
+                              "Grades 2-3", "Grades 4-5"))
+
+df.mclust7.grp <- df.mclust7
+df.mclust7.grp$grade_group <- df.groups$grade_group
+
+dat_numeric <- df.mclust7.grp %>%
+  select(all_of(order))
+
+group_vector <- df.mclust7.grp$grade_group
+```
+
+```{r multiG_LPA_fits}
+library(tidyLPA)
+# Estimate the 5-profile model across groups
+# We use 'estimate_profiles' with the 'group' argument
+mg_lpa <- dat_numeric %>%
+  estimate_profiles(n_profiles = 3, 
+                    package = "mclust", 
+                    model_names = "VVV",
+                    group = group_vector) 
+
+# Get results
+fit_stats <- get_fit(mg_lpa) 
+
+
+library(dplyr)
+library(kableExtra)
+
+# Select and clean the columns for the report
+mg_table_clean <- fit_stats %>%
+  select(Classes, LogLik, BIC, Entropy, n_min, BLRT_p) %>%
+  mutate(
+    # Convert n_min to a more readable percentage
+    n_min = paste0(round(n_min * 100, 1), "%"),
+    # Round the large stats
+    across(c(LogLik, BIC, Entropy), ~round(., 2))
+  )
+
+# Create the professional HTML table
+mg_table_clean %>%
+  kbl(caption = "Table 4. Fit Indices for Multigroup Latent Profile Analysis (N=1,504)",
+      col.names = c("Profiles", "Log-Likelihood", "BIC", "Entropy", "Smallest Class %", "BLRT (p)"),
+      align = "c") %>%
+  kable_classic(full_width = F, html_font = "Arial") %>%
+  # THE FIX: Add the kableExtra:: prefix
+  kableExtra::footnote(general = "Note: BIC: Bayesian Information Criterion; BLRT: Bootstrap Likelihood Ratio Test.")
+```
+
+#### Profile Plots
+
+```{r mg_profile_line_plots}
+
+mg_data <- get_data(mg_lpa)
+mg_data$group <- group_vector
+
+# --- 2. Manually calculate M & se for each Class WITHIN each Group
+mg_plot_data_with_se <- mg_data %>%
+  # Pivot assessment columns to a long format
+  pivot_longer(cols = all_of(order), names_to = "Parameter", values_to = "Score") %>%
+  group_by(group, Class, Parameter) %>%
+  summarise(
+    Mean_Estimate = mean(Score, na.rm = TRUE),
+    # Calculate Standard Error: SD / sqrt(n)
+    se = sd(Score, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  # Re-apply your expert storytelling order
+  mutate(Parameter = factor(Parameter, levels = order))
+
+# --- 3. Plot with Faceting by Grade Group ---
+# Define colors to match your bar chart (2 = Red/Struggling)
+mg_colors <- c("1"="#2ca02c", "2"="#d62728", "3"="#1f77b4", "4"="#ff7f0e")
+
+ggplot(mg_plot_data_with_se, aes(x = Parameter, y = Mean_Estimate, 
+                                 group = factor(Class), color = factor(Class))) +
+  # Add Error Bars FIRST so they sit behind the points
+  geom_errorbar(aes(ymin = Mean_Estimate - 1.96*se, 
+                    ymax = Mean_Estimate + 1.96*se), 
+                width = 0.2, alpha = 0.4) + 
+  geom_point(size = 3) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  facet_wrap(~group) + 
+  scale_x_discrete(labels = function(x) str_remove(x, "_.*")) +
+  scale_color_manual(values = mg_colors) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1, face = "bold"),
+    legend.position = "none",
+    strip.background = element_rect(fill = "gray95"),
+    strip.text = element_text(face = "bold", size = 12)
+  ) +
+  labs(
+    title = "Reading Profiles: Lower- vs. Upper-Grade Band Comparison with 95% CI",
+    y = "logit (ROAR-Word)",
+    x = NULL
+  )
+```
+
+```{r prevalence}
+# Create the prevalence cross-tab
+prevalence_summary <- mg_data %>%
+  group_by(group, Class) %>%
+  tally() %>%
+  group_by(group) %>%
+  mutate(Prevalence_Pct = round(n / sum(n) * 100, 1)) %>%
+  arrange(Class, group)
+
+print(prevalence_summary)
+```
+
+```{r check_on_profile_proportions_vvv3}
+# 1. Check Overall Model (VVV-3) counts
+# (Assuming your mclust object is 'mod_vvv3')
+overall_counts <- table(mod_vvv3$classification)
+overall_pct <- round(prop.table(overall_counts) * 100, 1)
+
+# 2. Check Multigroup Model (mg_lpa) counts
+
+mg_counts <- table(mg_data$group, mg_data$Class)
+mg_pct <- round(prop.table(mg_counts, margin = 1) * 100, 1)
+
+# Print both to compare
+cat("--- Overall Model Proportions ---\n")
+print(overall_pct)
+cat("\n--- Multigroup Model Proportions ---\n")
+print(mg_pct)
+```
+
+#### Profile Prevalence
+
+```{r prevalence_plot}
+
+library(ggplot2)
+# 1. Map the colors to the specific Class numbers from your multigroup results
+
+# Order: Class 1 (Green), Class 4 (Blue), Class 5 (Purple), Class 3 (Orange), Class 2 (Red)
+mg_colors <- c(
+  "1" = "#2ca02c", # Proficient
+  "3" = "#1f77b4", # Above Average
+  "2" = "#d62728"  # Far-below Average
+)
+
+library(ggplot2)
+
+# 1. Define the named vector for labels
+expert_labels <- c(
+  "1" = "Proficient",
+  "3" = "Average",
+  "2" = "Below Average"
+)
+
+# 2. Define the scholarly 'High-to-Low' order for the X-axis
+expert_x_order <- c("1", "3", "2")
+
+# 3. Create the aligned bar chart
+ggplot(prevalence_summary, aes(x = factor(Class, levels = expert_x_order), 
+                               y = Prevalence_Pct, 
+                               fill = factor(Class), 
+                               alpha = group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), 
+           width = 0.7, color = "white", show.legend = FALSE) +
+  
+  # Data labels on top of bars
+  geom_text(aes(label = paste0(round(Prevalence_Pct, 1), "%")), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.5, size = 3.5, fontface = "bold") +
+  
+  # Map the COLORS
+  scale_fill_manual(values = mg_colors) +
+  
+  # Map the LABELS to the X-axis
+  scale_x_discrete(labels = expert_labels) +
+  
+  # Map Transparency for Grade Bands
+  scale_alpha_manual(values = c("Grades 2-3" = 1.0, "Grades 4-5" = 0.6)) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none", 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 16),
+    axis.text.x = element_text(color = "black"),
+    axis.title.x = element_blank() # Remove 'Class' title for a cleaner look
+  ) +
+  labs(
+    title = "Prevalence by Grade Band",
+    subtitle = "Solid: Grades 2-3 | Muted: Grades 4-5",
+    y = "Percentage of Students (%)"
+  ) +
+  ylim(0, 60)
+
+```
+
+### Dimensionality Analysis
+
+Parallel analysis indicated a clear unidimensional structure, with only the first factor exceeding the eigenvalues generated from simulated and resampled data (Figure 1). This suggests that a single primary dimension of 'General Reading Ability' accounts for the majority of the variance in the 7 ROAR measures.
+
+```{r efa}
+library(psych)
+# 1. Determine how many factors to extract (Parallel Analysis)
+# This is the 'BIC plot' equivalent for EFA
+# fa.parallel(scaled_scores_na, fa = "fa")
+fa.parallel(df.mclust7, fa = "fa")
+```
+
+#### Factor Structure and Construct Integration
+
+```{r factor_structure}
+
+# Run the EFA
+# We use 'oblimin' rotation because we expect Language and Code to correlate
+efa_results <- fa(df.mclust7, 
+                  nfactors = 2, rotate = "oblimin")
+
+# 3. Look at the loadings
+print(efa_results$loadings, cutoff = 0)
+
+
+# --- Extracting EFA Results for Dynamic Reporting ---
+
+# Variance Explained
+# Vaccounted contains SS loadings, Proportion Var, etc.
+efa_summary <- efa_results$Vaccounted
+
+f1_prop_var <- round(efa_summary["Proportion Var", "MR1"] * 100, 1)
+f2_prop_var <- round(efa_summary["Proportion Var", "MR2"] * 100, 1)
+f2_eigen    <- round(efa_summary["SS loadings", "MR2"], 2)
+
+# Factor 1 Loading Range
+# We grab the first column of the loadings matrix
+f1_loadings <- as.numeric(efa_results$loadings[, 1])
+f1_min <- round(min(f1_loadings), 2)
+f1_max <- round(max(f1_loadings), 2)
+
+# Specific Target Loadings (for the story)
+# Use the exact row names from your dataframe
+loadings_mat <- as.data.frame(unclass(efa_results$loadings))
+
+morph_f1   <- round(loadings_mat["morphology_theta_trans", "MR1"], 2)
+vocab_f1   <- round(loadings_mat["cva_theta_trans", "MR1"], 2)
+phoneme_f2 <- round(loadings_mat["phoneme_theta_trans", "MR2"], 2)
+```
+The Exploratory Factor Analysis conducted on aligned logit scores revealed two distinct dimensions of reading ability. Factor loadings were evaluated using a substantive threshold of .30 (Comrey & Lee, 1992). Factor 1 (Linguistic Comprehension) accounted for `r f1_prop_var`% of the common variance and was defined by strong primary loadings ranging from `r f1_min` to `r f1_max`. This factor was most strongly anchored by morphological awareness ($loading =$ `r morph_f1`) and academic vocabulary ($loading =$ `r vocab_f1`).
+
+Factor 2 (Structural Mechanics) accounted for an additional `r f2_prop_var`% of the variance. With an eigenvalue of `r f2_eigen`, this factor reached the standard threshold for substantive significance and was primarily defined by phoneme awareness ($loading =$ `r phoneme_f2`). These results provide the theoretical justification for our subsequent person-centered analysis, as they demonstrate that structural and linguistic skills represent distinct axes of developmental growth, particularly with the lowest performing profile.
+
+```{r efa_loading_tbl}
+library(dplyr)
+library(tidyr)
+library(flextable)
+library(officer) # For border styling
+
+# 1. Prepare the Data Programmatically
+label_map <- c(
+  "inference_theta_trans"   = "Inference",
+  "morphology_theta_trans"  = "Morphology",
+  "cva_theta_trans"         = "Vocabulary (CVA)",
+  "trog_theta_trans"        = "Grammar (TROG)",
+  "word_theta"              = "Word Reading",
+  "phonics_theta_trans"     = "Phonics",
+  "phoneme_theta_trans"     = "Phoneme Awareness"
+)
+
+loadings_part <- as.data.frame(unclass(efa_results$loadings)) %>%
+  tibble::rownames_to_column("RawName") %>%
+  mutate(Measure = label_map[RawName]) %>%
+  select(Measure, MR1, MR2)
+
+summary_part <- as.data.frame(efa_results$Vaccounted) %>%
+  tibble::rownames_to_column("Measure") %>%
+  mutate(Measure = case_when(
+    Measure == "SS loadings" ~ "SS Loadings (Eigenvalues)",
+    Measure == "Proportion Var" ~ "Proportion Variance",
+    Measure == "Cumulative Var" ~ "Cumulative Variance",
+    TRUE ~ Measure
+  )) %>%
+  select(Measure, MR1, MR2)
+
+efa_final_df <- bind_rows(loadings_part, summary_part)
+
+# 2. Define standard APA border (regular thickness = 1pt)
+std_border <- fp_border(color = "black", width = 1)
+
+# 3. Create the Flextable
+ft <- flextable(efa_final_df) %>%
+  # Round numbers and handle NAs for the summary text
+  colformat_double(digits = 3) %>%
+  set_header_labels(Measure = "Assessment Measure", MR1 = "Factor 1", MR2 = "Factor 2") %>%
+  
+  # Professional APA Styling
+  font(fontname = "Times New Roman", part = "all") %>%
+  fontsize(size = 10, part = "all") %>%
+  border_remove() %>%
+  hline_top(border = std_border, part = "header") %>%
+  hline_bottom(border = std_border, part = "header") %>%
+  hline_bottom(border = std_border, part = "body") %>%
+  
+  # DYNAMIC BOLDING: Bolds loadings > 0.40
+  bold(i = ~ MR1 > 0.3, j = 2) %>%
+  bold(i = ~ MR2 > 0.3, j = 3) %>%
+  
+  # Add the horizontal line before summary stats (row 7 is the last measure)
+  hline(i = 7, border = std_border) %>%
+  
+  # Add Footnote
+  add_footer_lines("Note. Extraction method: minimum residual with Oblimin rotation. Factor 1: Linguistic Comprehension; Factor 2: Structural Mechanics, involving audio listening") %>%
+  font(fontname = "Times New Roman", part = "footer") %>%
+  fontsize(size = 9, part = "footer") %>%
+  
+  autofit()
+
+ft
+
+# 4. Export to Word
+# save_as_docx(ft, path = "output/EFA_Loadings_Table.docx")
+
+```
+
