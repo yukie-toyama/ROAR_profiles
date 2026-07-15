@@ -1615,7 +1615,7 @@ m1c3.plot <- ggplot(plot_data_3_clean,
   labs(y = "Mean Z-Score",
        x = "ROAR Measures")
 
-m1c3.plot
+m1c3.plot 
 
 ```
 
